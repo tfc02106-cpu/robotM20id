@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FANUC M-20iD/25｜A/B 雙臂交替、G-code與防撞模擬</title>
+  <title>FANUC M-20iD/25｜雙臂天花板 O/X G-code 模擬</title>
   <style>
     :root {
       --bg: #0e2038;
@@ -267,6 +267,7 @@
     .gcode-editor:focus { border-color: #7bdcff; box-shadow: 0 0 0 2px rgba(84,184,255,.12); }
     .gcode-toolbar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 9px; }
     .gcode-toolbar.two { grid-template-columns: repeat(2, 1fr); }
+    .gcode-toolbar.four { grid-template-columns: repeat(4, 1fr); }
     .gcode-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; }
     .check-row { display: flex; align-items: center; gap: 7px; min-height: 36px; color: var(--muted); font-size: 11px; }
     .check-row input { accent-color: var(--accent); }
@@ -310,7 +311,7 @@
       <div class="logo">F</div>
       <h1>FANUC M-20iD/25 A/B 雙臂模擬</h1>
     </div>
-    <p class="subtitle">A/B 順序互鎖｜雙臂 TCP｜G-code 控制 A｜Three.js + WebGPU</p>
+    <p class="subtitle">A 畫 O → B 畫 X｜雙臂 Cartesian G-code-like｜Three.js + WebGPU</p>
 
     <section class="card">
       <h2>機型名目規格</h2>
@@ -472,18 +473,59 @@
     </section>
 
     <section class="card">
-      <h2>A 手臂 G-code-like 連續路徑</h2>
+      <h2>A/B 雙臂天花板 G-code-like 路徑</h2>
       <textarea id="gcodeEditor" class="gcode-editor" spellcheck="false" aria-label="G-code 程式編輯器">%
-O1000 (M-20iD/25 joint-space continuous demo)
+O2000 (A DRAW O ON CEILING, THEN B DRAW X)
 G90
+G61
+M101 (SELECT ARM A)
+M111 (PEN UP)
+G0 X730 Y0 Z2450 F350
+G0 X730 Y0 Z2600 F180
+M110 (PEN DOWN)
 G64
-G1 J1=0 J2=-34 J3=72 J4=0 J5=-38 J6=0 F35
-G1 J1=20 J2=-44 J3=84 J4=20 J5=-46 J6=30 F40
-G1 J1=40 J2=-54 J3=96 J4=40 J5=-54 J6=60 F40
-G1 J1=60 J2=-64 J3=108 J4=60 J5=-62 J6=90 F40
-G1 J1=40 J2=-54 J3=96 J4=40 J5=-54 J6=60 F40
-G1 J1=20 J2=-44 J3=84 J4=20 J5=-46 J6=30 F40
-G1 J1=0 J2=-34 J3=72 J4=0 J5=-38 J6=0 F35
+G1 X723.9 Y46.6 Z2600 F100
+G1 X705.9 Y90.0 Z2600 F100
+G1 X677.3 Y127.3 Z2600 F100
+G1 X640.0 Y155.9 Z2600 F100
+G1 X596.6 Y173.9 Z2600 F100
+G1 X550.0 Y180.0 Z2600 F100
+G1 X503.4 Y173.9 Z2600 F100
+G1 X460.0 Y155.9 Z2600 F100
+G1 X422.7 Y127.3 Z2600 F100
+G1 X394.1 Y90.0 Z2600 F100
+G1 X376.1 Y46.6 Z2600 F100
+G1 X370.0 Y0.0 Z2600 F100
+G1 X376.1 Y-46.6 Z2600 F100
+G1 X394.1 Y-90.0 Z2600 F100
+G1 X422.7 Y-127.3 Z2600 F100
+G1 X460.0 Y-155.9 Z2600 F100
+G1 X503.4 Y-173.9 Z2600 F100
+G1 X550.0 Y-180.0 Z2600 F100
+G1 X596.6 Y-173.9 Z2600 F100
+G1 X640.0 Y-155.9 Z2600 F100
+G1 X677.3 Y-127.3 Z2600 F100
+G1 X705.9 Y-90.0 Z2600 F100
+G1 X723.9 Y-46.6 Z2600 F100
+G1 X730.0 Y-0.0 Z2600 F100
+M111
+G61
+G0 X730 Y0 Z2450 F300
+G4 P500
+M102 (SELECT ARM B)
+M111
+G0 X380 Y-170 Z2450 F350
+G0 X380 Y-170 Z2600 F180
+M110
+G1 X720 Y170 Z2600 F100
+M111
+G0 X720 Y170 Z2450 F300
+G0 X380 Y170 Z2450 F300
+G0 X380 Y170 Z2600 F180
+M110
+G1 X720 Y-170 Z2600 F100
+M111
+G0 X720 Y-170 Z2450 F300
 M30
 %</textarea>
 
@@ -498,22 +540,25 @@ M30
         <label class="check-row"><input id="gcodeLoop" type="checkbox" /> M30 後循環執行</label>
       </div>
 
-      <div class="gcode-toolbar">
+      <div class="gcode-toolbar four">
         <button id="gcodeValidate" class="btn">檢查程式</button>
-        <button id="gcodeExample" class="btn">載入範例</button>
+        <button id="gcodeExample" class="btn">載入 O／X</button>
+        <button id="ceilingView" class="btn primary">天花板視角</button>
         <button id="gcodeStart" class="btn green">開始／續跑</button>
       </div>
-      <div class="gcode-toolbar">
+      <div class="gcode-toolbar four">
         <button id="gcodePause" class="btn">暫停</button>
         <button id="gcodeStep" class="btn primary">單段執行</button>
         <button id="gcodeStop" class="btn danger">停止程式</button>
+        <button id="clearCeilingDrawing" class="btn">清除 O／X</button>
       </div>
       <div class="progress-shell"><div id="gcodeProgress" class="progress-bar"></div></div>
       <div id="gcodeStatus" class="program-status">尚未檢查程式。
 此語法只供瀏覽器模擬，不可直接上傳至 FANUC 控制器。</div>
       <div class="syntax-box">
-        支援：<code>G90/G91</code> 絕對／增量、<code>G0/G1</code> 協調關節運動、<code>G4 P毫秒</code>、<code>G61</code> 精確停止、<code>G64</code> 連續模式、<code>M0</code> 暫停、<code>M2/M30</code> 結束、<code>M99</code> 迴圈。<br>
-        關節格式：<code>J1=角度 ... J6=角度 F速度</code>；角度單位為 degree，F 為 degree/s。程式檢查與執行期間均會套用 20 mm 地板安全間隙。X/Y/Z Cartesian 指令尚未開放，避免沒有 IK、姿態組態與奇異點檢查時產生錯誤路徑。
+        雙臂指令：<code>M101</code> 選 A、<code>M102</code> 選 B、<code>M110</code> 畫筆接觸、<code>M111</code> 畫筆抬起。<br>
+        Cartesian 格式：<code>G0/G1 X... Y... Z... F...</code>，位置單位 mm、F 單位 mm/s；座標使用各手臂自己的 BASE。天花板接觸面為 <code>Z=2600 mm</code>。<br>
+        仍支援關節格式 <code>J1=角度 ... J6=角度 F速度</code>、<code>G90/G91</code>、<code>G4</code>、<code>G61/G64</code>、<code>M0/M30/M99</code>。Cartesian IK 僅針對本簡化模型的「工具垂直向上」姿態，不等同 FANUC 原廠逆運動學或 TP/LS。
       </div>
     </section>
 
@@ -569,7 +614,7 @@ M30
       <div class="hud-badge">FPS：<strong id="fps">--</strong></div>
       <div class="hud-coordinate-panel">
         <div class="hud-coordinate-title"><span>A/B 雙臂 TCP 即時座標</span><span>位置 mm｜姿態 deg</span></div>
-        <div class="hud-coordinate-title"><span><span class="arm-phase-badge" id="hudSequenceArm">待命</span> A 手臂｜BASE A</span><span>G-code 控制 A</span></div>
+        <div class="hud-coordinate-title"><span><span class="arm-phase-badge" id="hudSequenceArm">待命</span> A 手臂｜BASE A</span><span>G-code 可切換 A／B</span></div>
         <div class="hud-coordinate-grid">
           <div class="hud-coordinate-item">X<strong id="hudTcpX">0.0</strong></div>
           <div class="hud-coordinate-item">Y<strong id="hudTcpY">0.0</strong></div>
@@ -579,7 +624,7 @@ M30
           <div class="hud-coordinate-item">RZ<strong id="hudRotZ">0.0</strong></div>
         </div>
         <div id="hudCollision" class="hud-collision safe">A 地板防撞：檢查中</div>
-        <div class="hud-coordinate-title" style="margin-top:7px"><span>B 手臂｜BASE B</span><span>交替流程控制 B</span></div>
+        <div class="hud-coordinate-title" style="margin-top:7px"><span>B 手臂｜BASE B</span><span>G-code／交替流程控制 B</span></div>
         <div class="hud-coordinate-grid">
           <div class="hud-coordinate-item">X<strong id="hudTcpXB">0.0</strong></div>
           <div class="hud-coordinate-item">Y<strong id="hudTcpYB">0.0</strong></div>
@@ -591,7 +636,7 @@ M30
         <div id="hudCollisionB" class="hud-collision safe">B 地板防撞：檢查中</div>
       </div>
     </div>
-    <div class="help">A/B 順序互鎖｜G-code 控制 A｜非 FANUC TP/LS｜左鍵旋轉｜滾輪縮放｜右鍵平移</div>
+    <div class="help">A 畫 O → B 畫 X｜M101/M102 選臂｜Z2600 天花板｜非 FANUC TP/LS｜左鍵旋轉｜滾輪縮放</div>
   </main>
 </div>
 
@@ -925,6 +970,80 @@ M30
   makeTextPlane(['ARM','A'], .24, .13, robotRoot, [0,.34,.43]);
   makeTextPlane(['ARM','B'], .24, .13, robotRootB, [0,.34,.43]);
 
+  // 天花板示範工作面：BASE Z = 2600 mm。面板下表面即為畫圖接觸面。
+  const CEILING_LEVEL_Y = 2.600;
+  const CEILING_ARM_MARGIN = 0.012;
+  const ceilingGroup = new THREE.Group();
+  scene.add(ceilingGroup);
+  const ceilingMaterial = new THREE.MeshStandardMaterial({
+    color: 0xeef7ff, roughness: .72, metalness: .03, transparent: true, opacity: .72,
+    side: THREE.DoubleSide
+  });
+  function makeCeilingPanel(root, accentColor) {
+    const centerX = root.position.x + .55;
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(.92,.025,.82), ceilingMaterial.clone());
+    panel.position.set(centerX, CEILING_LEVEL_Y + .0125, 0);
+    panel.receiveShadow = true;
+    ceilingGroup.add(panel);
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(panel.geometry),
+      new THREE.LineBasicMaterial({ color: accentColor, transparent: true, opacity: .86 })
+    );
+    edges.position.copy(panel.position);
+    ceilingGroup.add(edges);
+    return panel;
+  }
+  const ceilingPanelA = makeCeilingPanel(robotRoot, 0x55c8ff);
+  const ceilingPanelB = makeCeilingPanel(robotRootB, 0x76e96f);
+
+  const ceilingDrawingGroup = new THREE.Group();
+  scene.add(ceilingDrawingGroup);
+  const ceilingDrawing = {
+    A: { penDown: false, current: null, strokes: [] },
+    B: { penDown: false, current: null, strokes: [] }
+  };
+  function clearCeilingDrawings() {
+    for (const arm of ['A','B']) {
+      ceilingDrawing[arm].penDown = false;
+      ceilingDrawing[arm].current = null;
+      ceilingDrawing[arm].strokes = [];
+    }
+    while (ceilingDrawingGroup.children.length) {
+      const child = ceilingDrawingGroup.children.pop();
+      child.geometry?.dispose?.();
+      child.material?.dispose?.();
+    }
+  }
+  function beginCeilingStroke(arm) {
+    const state = ceilingDrawing[arm];
+    state.penDown = true;
+    const line = new THREE.Line(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({ color: arm === 'A' ? 0x21b7ff : 0x54e66e })
+    );
+    line.frustumCulled = false;
+    ceilingDrawingGroup.add(line);
+    state.current = { line, points: [] };
+    state.strokes.push(state.current);
+  }
+  function endCeilingStroke(arm) {
+    ceilingDrawing[arm].penDown = false;
+    ceilingDrawing[arm].current = null;
+  }
+  function appendCeilingDrawingPoint(arm) {
+    const state = ceilingDrawing[arm];
+    if (!state.penDown || !state.current) return;
+    const tcpObject = arm === 'A' ? tcp : tcpB;
+    const p = new THREE.Vector3();
+    tcpObject.getWorldPosition(p);
+    // 線略低於天花板下表面，避免與面板發生 z-fighting。
+    p.y = CEILING_LEVEL_Y - .004;
+    const points = state.current.points;
+    if (points.length && points[points.length - 1].distanceToSquared(p) < 0.000004) return;
+    points.push(p.clone());
+    state.current.line.geometry.setFromPoints(points);
+  }
+
   const collisionMeshesB = [];
   const collisionBoxB = new THREE.Box3();
   j1B.traverse(object => {
@@ -980,6 +1099,29 @@ M30
       part: lowestObject?.userData.floorPartName || '未知部位'
     };
   }
+
+  function readCeilingStateFor(meshes, box) {
+    scene.updateMatrixWorld(true);
+    let maxY = -Infinity;
+    let highestObject = null;
+    for (const object of meshes) {
+      if (!object.visible || !object.geometry?.boundingBox) continue;
+      box.copy(object.geometry.boundingBox).applyMatrix4(object.matrixWorld);
+      if (box.max.y > maxY) {
+        maxY = box.max.y;
+        highestObject = object;
+      }
+    }
+    const clearance = CEILING_LEVEL_Y - maxY;
+    return {
+      maxY,
+      clearance,
+      collision: clearance < CEILING_ARM_MARGIN - 1e-7,
+      part: highestObject?.userData.floorPartName || '未知部位'
+    };
+  }
+  function readCeilingState() { return readCeilingStateFor(collisionMeshes, collisionBox); }
+  function readCeilingStateB() { return readCeilingStateFor(collisionMeshesB, collisionBoxB); }
 
   function setPoseArray(pose) {
     for (let i = 0; i < 6; i++) q[i] = pose[i];
@@ -1102,6 +1244,62 @@ M30
   const maxSpeeds = [210,210,265,420,420,720];
   const q = [0, -34, 72, 0, -38, 0];
   const qB = [0, -34, 72, 0, -38, 0];
+
+  // 專用 Cartesian IK：工具軸保持垂直向上，用於天花板平面示範。
+  // 簡化鏈：L1=840 mm；J3 至 J5=(215,930) mm；J5 至 TCP=550 mm；肩高=425 mm。
+  function solveCeilingIK(targetMm, seedPose) {
+    const X = targetMm.x / 1000;
+    const Y = targetMm.y / 1000;
+    const Z = targetMm.z / 1000;
+    const L1 = .840;
+    const link2X = .215;
+    const link2Y = .930;
+    const L2 = Math.hypot(link2X, link2Y);
+    const alpha = Math.atan2(link2X, link2Y);
+    const L3 = .550;
+    const shoulderZ = .425;
+    const radial = Math.hypot(X, Y);
+    const py = Z - shoulderZ - L3;
+    const cosine = (radial * radial + py * py - L1 * L1 - L2 * L2) / (2 * L1 * L2);
+    if (!Number.isFinite(cosine) || cosine < -1.000001 || cosine > 1.000001) {
+      return {
+        ok: false,
+        message: `XYZ (${targetMm.x.toFixed(1)}, ${targetMm.y.toFixed(1)}, ${targetMm.z.toFixed(1)}) mm 超出簡化 IK 可達範圍。`
+      };
+    }
+
+    const c = THREE.MathUtils.clamp(cosine, -1, 1);
+    const q1 = Math.atan2(Y, X);
+    const candidates = [];
+    for (const branch of [1, -1]) {
+      const delta = branch * Math.acos(c);
+      const beta1 = Math.atan2(py, radial) - Math.atan2(L2 * Math.sin(delta), L1 + L2 * Math.cos(delta));
+      const q2 = beta1 - Math.PI / 2;
+      const q3 = delta + alpha;
+      const q5 = -(q2 + q3);
+      const pose = [q1, q2, q3, 0, q5, 0].map(THREE.MathUtils.radToDeg);
+      const valid = pose.every((value, i) =>
+        Number.isFinite(value) &&
+        value >= limits[i][0] - 1e-7 &&
+        value <= limits[i][1] + 1e-7
+      );
+      if (!valid) continue;
+      const score = pose.reduce((sum, value, i) =>
+        sum + Math.pow((value - seedPose[i]) / Math.max(1, limits[i][1] - limits[i][0]), 2), 0);
+      candidates.push({ pose, score });
+    }
+
+    if (!candidates.length) {
+      return {
+        ok: false,
+        message: `XYZ (${targetMm.x.toFixed(1)}, ${targetMm.y.toFixed(1)}, ${targetMm.z.toFixed(1)}) mm 有幾何解，但超出模型軸限。`
+      };
+    }
+
+    candidates.sort((a, b) => a.score - b.score);
+    return { ok: true, pose: candidates[0].pose };
+  }
+
   let selectedJoint = 0;
   let isMoving = false;
   let motionMode = 'single';
@@ -1540,21 +1738,77 @@ M30
     updateFloorReadout(readFloorState(), readFloorStateB());
   }
 
+  function tcpDataAtPose(arm, pose) {
+    const savedA = q.slice();
+    const savedB = qB.slice();
+    try {
+      if (arm === 'A') setPoseArray(pose);
+      else setPoseArrayB(pose);
+      return arm === 'A'
+        ? computeTcpData(robotRoot, tcp)
+        : computeTcpData(robotRootB, tcpB);
+    } finally {
+      setPoseArray(savedA);
+      setPoseArrayB(savedB);
+    }
+  }
+
   // ------------------------------
-  // G-code-like 關節空間程式
-  // 這是模擬器自訂語法，不是 FANUC TP/LS 或控制器可直接執行的 G-code。
+  // G-code-like 雙臂關節／Cartesian 程式
+  // 這是模擬器自訂語法；M101/M102 選臂，Cartesian IK 僅適用工具垂直向上的天花板示範。
   // ------------------------------
   const GCODE_EXAMPLE = `%
-O1000 (M-20iD/25 joint-space continuous demo)
+O2000 (A DRAW O ON CEILING, THEN B DRAW X)
 G90
+G61
+M101 (SELECT ARM A)
+M111 (PEN UP)
+G0 X730 Y0 Z2450 F350
+G0 X730 Y0 Z2600 F180
+M110 (PEN DOWN)
 G64
-G1 J1=0 J2=-34 J3=72 J4=0 J5=-38 J6=0 F35
-G1 J1=20 J2=-44 J3=84 J4=20 J5=-46 J6=30 F40
-G1 J1=40 J2=-54 J3=96 J4=40 J5=-54 J6=60 F40
-G1 J1=60 J2=-64 J3=108 J4=60 J5=-62 J6=90 F40
-G1 J1=40 J2=-54 J3=96 J4=40 J5=-54 J6=60 F40
-G1 J1=20 J2=-44 J3=84 J4=20 J5=-46 J6=30 F40
-G1 J1=0 J2=-34 J3=72 J4=0 J5=-38 J6=0 F35
+G1 X723.9 Y46.6 Z2600 F100
+G1 X705.9 Y90.0 Z2600 F100
+G1 X677.3 Y127.3 Z2600 F100
+G1 X640.0 Y155.9 Z2600 F100
+G1 X596.6 Y173.9 Z2600 F100
+G1 X550.0 Y180.0 Z2600 F100
+G1 X503.4 Y173.9 Z2600 F100
+G1 X460.0 Y155.9 Z2600 F100
+G1 X422.7 Y127.3 Z2600 F100
+G1 X394.1 Y90.0 Z2600 F100
+G1 X376.1 Y46.6 Z2600 F100
+G1 X370.0 Y0.0 Z2600 F100
+G1 X376.1 Y-46.6 Z2600 F100
+G1 X394.1 Y-90.0 Z2600 F100
+G1 X422.7 Y-127.3 Z2600 F100
+G1 X460.0 Y-155.9 Z2600 F100
+G1 X503.4 Y-173.9 Z2600 F100
+G1 X550.0 Y-180.0 Z2600 F100
+G1 X596.6 Y-173.9 Z2600 F100
+G1 X640.0 Y-155.9 Z2600 F100
+G1 X677.3 Y-127.3 Z2600 F100
+G1 X705.9 Y-90.0 Z2600 F100
+G1 X723.9 Y-46.6 Z2600 F100
+G1 X730.0 Y-0.0 Z2600 F100
+M111
+G61
+G0 X730 Y0 Z2450 F300
+G4 P500
+M102 (SELECT ARM B)
+M111
+G0 X380 Y-170 Z2450 F350
+G0 X380 Y-170 Z2600 F180
+M110
+G1 X720 Y170 Z2600 F100
+M111
+G0 X720 Y170 Z2450 F300
+G0 X380 Y170 Z2450 F300
+G0 X380 Y170 Z2600 F180
+M110
+G1 X720 Y-170 Z2600 F100
+M111
+G0 X720 Y-170 Z2450 F300
 M30
 %`;
 
@@ -1616,7 +1870,7 @@ M30
     return Math.max(duration, 0.04);
   }
 
-  function compileGcode(source, startQ = q) {
+  function compileLegacyGcode(source, startQ = q) {
     const lines = source.replace(/\r/g, '').split('\n');
     const errors = [];
     const warnings = [];
@@ -1791,6 +2045,326 @@ M30
     return { blocks, errors, warnings, endQ: cursor };
   }
 
+  function compileDualCartesianGcode(source, startQA = q, startQB = qB) {
+    const lines = source.replace(/\r/g, '').split('\n');
+    const errors = [];
+    const warnings = [];
+    const blocks = [];
+    let absolute = true;
+    let motionCode = 1;
+    let pathMode = 'continuous';
+    let activeArm = 'A';
+    let modalJointFeed = 30;
+    let modalCartesianFeed = 120;
+    let hasExplicitEnd = false;
+
+    const cursorPose = { A: startQA.slice(), B: startQB.slice() };
+    const tcpA0 = tcpDataAtPose('A', startQA);
+    const tcpB0 = tcpDataAtPose('B', startQB);
+    const cursorXYZ = {
+      A: { x: tcpA0.x, y: tcpA0.y, z: tcpA0.z },
+      B: { x: tcpB0.x, y: tcpB0.y, z: tcpB0.z }
+    };
+
+    const supportedG = new Set([0, 1, 4, 61, 64, 90, 91]);
+    const supportedM = new Set([0, 2, 30, 99, 101, 102, 110, 111]);
+    const num = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)';
+
+    lines.forEach((raw, index) => {
+      const sourceLine = index + 1;
+      const line = stripGcodeComments(raw);
+      if (!line || line === '%' || /^O\d+\b/.test(line)) return;
+
+      const gCodes = [...line.matchAll(/\bG0*(\d+(?:\.\d+)?)\b/g)].map(m => Number(m[1]));
+      const mCodes = [...line.matchAll(/\bM0*(\d+)\b/g)].map(m => Number(m[1]));
+      const badG = gCodes.find(code => !supportedG.has(code));
+      const badM = mCodes.find(code => !supportedM.has(code));
+      if (badG !== undefined) errors.push(`第 ${sourceLine} 行：不支援 G${badG}。`);
+      if (badM !== undefined) errors.push(`第 ${sourceLine} 行：不支援 M${badM}。`);
+      if (badG !== undefined || badM !== undefined) return;
+
+      if (gCodes.includes(90)) absolute = true;
+      if (gCodes.includes(91)) absolute = false;
+      if (gCodes.includes(61)) pathMode = 'exact';
+      if (gCodes.includes(64)) pathMode = 'continuous';
+      if (gCodes.includes(0)) motionCode = 0;
+      if (gCodes.includes(1)) motionCode = 1;
+
+      const actionM = mCodes.find(code => supportedM.has(code));
+      const cartValues = {
+        X: numberWord(line, 'X'),
+        Y: numberWord(line, 'Y'),
+        Z: numberWord(line, 'Z')
+      };
+      const hasCartesian = Object.values(cartValues).some(value => value !== null);
+
+      const jointWords = [];
+      const jointRegex = new RegExp(`\\bJ([1-6])\\s*=?\\s*(${num})`, 'gi');
+      for (const match of line.matchAll(jointRegex)) {
+        jointWords.push({ index: Number(match[1]) - 1, value: Number(match[2]) });
+      }
+
+      if (hasCartesian && jointWords.length) {
+        errors.push(`第 ${sourceLine} 行：Cartesian XYZ 與 J1～J6 不可寫在同一運動區塊。`);
+        return;
+      }
+      if (actionM !== undefined && (hasCartesian || jointWords.length)) {
+        errors.push(`第 ${sourceLine} 行：選臂／畫筆／結束 M 指令請與運動分行。`);
+        return;
+      }
+
+      if (actionM === 101 || actionM === 102) {
+        activeArm = actionM === 101 ? 'A' : 'B';
+        blocks.push({ type: 'select', arm: activeArm, line: sourceLine, source: raw.trim() });
+      } else if (actionM === 110 || actionM === 111) {
+        blocks.push({
+          type: 'pen',
+          arm: activeArm,
+          down: actionM === 110,
+          line: sourceLine,
+          source: raw.trim()
+        });
+      } else if (actionM === 0) {
+        blocks.push({ type: 'pause', arm: activeArm, line: sourceLine, source: raw.trim() });
+      } else if (actionM === 2 || actionM === 30) {
+        blocks.push({
+          type: 'end',
+          arm: activeArm,
+          line: sourceLine,
+          source: raw.trim(),
+          code: actionM
+        });
+        hasExplicitEnd = true;
+      } else if (actionM === 99) {
+        blocks.push({ type: 'loop', arm: activeArm, line: sourceLine, source: raw.trim() });
+        hasExplicitEnd = true;
+      }
+
+      if (gCodes.includes(4)) {
+        if (hasCartesian || jointWords.length) {
+          errors.push(`第 ${sourceLine} 行：G4 不可與運動同列。`);
+          return;
+        }
+        const pValue = numberWord(line, 'P');
+        const sValue = numberWord(line, 'S');
+        const milliseconds = pValue !== null ? pValue : (sValue !== null ? sValue * 1000 : null);
+        if (milliseconds === null || milliseconds < 0) {
+          errors.push(`第 ${sourceLine} 行：G4 必須指定 P毫秒 或 S秒。`);
+        } else {
+          blocks.push({
+            type: 'dwell',
+            arm: activeArm,
+            milliseconds,
+            line: sourceLine,
+            source: raw.trim()
+          });
+        }
+        return;
+      }
+
+      const feed = numberWord(line, 'F');
+      if (feed !== null) {
+        if (!(feed > 0)) {
+          errors.push(`第 ${sourceLine} 行：F 必須大於 0。`);
+        } else if (hasCartesian) {
+          modalCartesianFeed = feed;
+        } else if (jointWords.length) {
+          modalJointFeed = feed;
+        } else {
+          modalCartesianFeed = feed;
+          modalJointFeed = feed;
+        }
+      }
+
+      if (hasCartesian) {
+        const startXYZ = { ...cursorXYZ[activeArm] };
+        const targetXYZ = { ...startXYZ };
+        for (const axis of ['X', 'Y', 'Z']) {
+          const value = cartValues[axis];
+          if (value === null) continue;
+          const key = axis.toLowerCase();
+          targetXYZ[key] = absolute ? value : startXYZ[key] + value;
+        }
+
+        const dx = targetXYZ.x - startXYZ.x;
+        const dy = targetXYZ.y - startXYZ.y;
+        const dz = targetXYZ.z - startXYZ.z;
+        const distance = Math.hypot(dx, dy, dz);
+
+        if (distance > 1e-7) {
+          // G0 採關節空間快速定位，只求終點 IK；G1 才切成小段逼近 Cartesian 直線。
+          const maxSegment = 28;
+          const segments = motionCode === 0
+            ? 1
+            : Math.max(1, Math.ceil(distance / maxSegment));
+          let poseStart = cursorPose[activeArm].slice();
+          let xyzStart = { ...startXYZ };
+          let lineFailed = false;
+
+          for (let segment = 1; segment <= segments; segment++) {
+            const u = segment / segments;
+            const xyzTarget = {
+              x: startXYZ.x + dx * u,
+              y: startXYZ.y + dy * u,
+              z: startXYZ.z + dz * u
+            };
+            const ik = solveCeilingIK(xyzTarget, poseStart);
+            if (!ik.ok) {
+              errors.push(`第 ${sourceLine} 行、路徑 ${(u * 100).toFixed(1)}%：${ik.message}`);
+              lineFailed = true;
+              break;
+            }
+
+            const segmentDistance = Math.hypot(
+              xyzTarget.x - xyzStart.x,
+              xyzTarget.y - xyzStart.y,
+              xyzTarget.z - xyzStart.z
+            );
+            const cartSeconds = segmentDistance /
+              Math.max(motionCode === 0 ? 350 : modalCartesianFeed, .001);
+            const axisSeconds = moveDuration(poseStart, ik.pose, 999, true);
+            const duration = Math.max(.025, cartSeconds, axisSeconds);
+
+            blocks.push({
+              type: 'move',
+              arm: activeArm,
+              start: poseStart.slice(),
+              target: ik.pose.slice(),
+              duration,
+              feed: modalCartesianFeed,
+              rapid: motionCode === 0,
+              pathMode,
+              line: sourceLine,
+              source: raw.trim(),
+              cartesian: true,
+              xyzStart: { ...xyzStart },
+              xyzTarget: { ...xyzTarget },
+              vStart: Array(6).fill(0),
+              vEnd: Array(6).fill(0)
+            });
+
+            poseStart = ik.pose.slice();
+            xyzStart = xyzTarget;
+          }
+
+          if (!lineFailed) {
+            cursorPose[activeArm] = poseStart.slice();
+            cursorXYZ[activeArm] = { ...targetXYZ };
+          }
+        }
+      }
+
+      if (jointWords.length) {
+        const target = cursorPose[activeArm].slice();
+        const jointMap = new Map();
+        for (const word of jointWords) jointMap.set(word.index, word.value);
+        for (const [jointIndex, value] of jointMap.entries()) {
+          target[jointIndex] = absolute ? value : target[jointIndex] + value;
+        }
+
+        let valid = true;
+        for (let i = 0; i < 6; i++) {
+          const [lo, hi] = limits[i];
+          if (target[i] < lo - 1e-8 || target[i] > hi + 1e-8) {
+            errors.push(
+              `第 ${sourceLine} 行：${activeArm} 手臂 J${i + 1} 目標 ${target[i].toFixed(3)}° 超出 ${formatLimit(lo)} ～ ${formatLimit(hi)}。`
+            );
+            valid = false;
+          }
+        }
+
+        if (valid && target.some((value, i) =>
+          Math.abs(value - cursorPose[activeArm][i]) > 1e-9)) {
+          const rapid = motionCode === 0;
+          blocks.push({
+            type: 'move',
+            arm: activeArm,
+            start: cursorPose[activeArm].slice(),
+            target: target.slice(),
+            duration: moveDuration(cursorPose[activeArm], target, modalJointFeed, rapid),
+            feed: modalJointFeed,
+            rapid,
+            pathMode,
+            line: sourceLine,
+            source: raw.trim(),
+            cartesian: false,
+            vStart: Array(6).fill(0),
+            vEnd: Array(6).fill(0)
+          });
+          cursorPose[activeArm] = target.slice();
+          const data = tcpDataAtPose(activeArm, target);
+          cursorXYZ[activeArm] = { x: data.x, y: data.y, z: data.z };
+        }
+      }
+
+      const residue = line
+        .replace(/\bN\d+\b/g, ' ')
+        .replace(/\bO\d+\b/g, ' ')
+        .replace(/\bG0*\d+(?:\.\d+)?\b/g, ' ')
+        .replace(/\bM0*\d+\b/g, ' ')
+        .replace(new RegExp(`\\bJ[1-6]\\s*=?\\s*${num}`, 'gi'), ' ')
+        .replace(new RegExp(`\\b[XYZFPS]\\s*=?\\s*${num}`, 'gi'), ' ')
+        .replace(/[%\s]/g, '');
+      if (/[A-Z]/.test(residue)) {
+        warnings.push(`第 ${sourceLine} 行：忽略無法辨識的內容「${residue}」。`);
+      }
+    });
+
+    if (!hasExplicitEnd && blocks.length) {
+      blocks.push({
+        type: 'end',
+        arm: activeArm,
+        line: lines.length,
+        source: '(implicit end)',
+        code: 2
+      });
+      warnings.push('程式未包含 M2、M30 或 M99，已自動停止。');
+    }
+
+    for (let i = 0; i < blocks.length - 1; i++) {
+      const a = blocks[i];
+      const b = blocks[i + 1];
+      if (a.type !== 'move' || b.type !== 'move' || a.arm !== b.arm) continue;
+      if (a.pathMode !== 'continuous' || b.pathMode !== 'continuous') continue;
+      for (let j = 0; j < 6; j++) {
+        const s0 = (a.target[j] - a.start[j]) / a.duration;
+        const s1 = (b.target[j] - b.start[j]) / b.duration;
+        if (Math.abs(s0) < 1e-9 || Math.abs(s1) < 1e-9 || Math.sign(s0) !== Math.sign(s1)) continue;
+        let tangent = 2 * s0 * s1 / (s0 + s1);
+        const cap = Math.min(maxSpeeds[j], 3 * Math.min(Math.abs(s0), Math.abs(s1)));
+        tangent = THREE.MathUtils.clamp(tangent, -cap, cap);
+        a.vEnd[j] = tangent;
+        b.vStart[j] = tangent;
+      }
+    }
+
+    return {
+      blocks,
+      errors,
+      warnings,
+      endQA: cursorPose.A,
+      endQB: cursorPose.B
+    };
+  }
+
+  function compileGcode(source, startQA = q, startQB = qB) {
+    const isDualCartesian =
+      /\bM(?:101|102|110|111)\b/i.test(source) ||
+      /\b[XYZ]\s*=?\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)/i.test(source);
+
+    if (isDualCartesian) {
+      return compileDualCartesianGcode(source, startQA, startQB);
+    }
+
+    const result = compileLegacyGcode(source, startQA);
+    result.blocks.forEach(block => {
+      if (!block.arm) block.arm = 'A';
+    });
+    result.endQA = result.endQ;
+    result.endQB = startQB.slice();
+    return result;
+  }
+
   function interpolateProgramPose(block, u) {
     if (block.pathMode === 'exact') {
       const s = u * u * u * (10 + u * (-15 + 6 * u));
@@ -1809,33 +2383,58 @@ M30
   }
 
   function scanProgramFloorSafety(blocks) {
-    const saved = q.slice();
+    const savedA = q.slice();
+    const savedB = qB.slice();
     try {
       for (const block of blocks) {
         if (block.type !== 'move') continue;
-        const maxDelta = Math.max(...block.target.map((value, i) => Math.abs(value - block.start[i])));
-        const samples = Math.max(12, Math.min(220, Math.ceil(maxDelta / 1.5)));
+        const maxDelta = Math.max(...block.target.map((value, i) =>
+          Math.abs(value - block.start[i])));
+        const samples = Math.max(10, Math.min(180, Math.ceil(maxDelta / 1.5)));
+
         for (let sampleIndex = 0; sampleIndex <= samples; sampleIndex++) {
           const u = sampleIndex / samples;
           const pose = interpolateProgramPose(block, u);
-          setPoseArray(pose);
-          const state = readFloorState();
-          if (state.collision) {
+          if (block.arm === 'B') setPoseArrayB(pose);
+          else setPoseArray(pose);
+
+          const floorState = block.arm === 'B' ? readFloorStateB() : readFloorState();
+          if (floorState.collision) {
             return {
-              line: block.line, source: block.source, ratio: u, state, pose
+              line: block.line,
+              source: block.source,
+              ratio: u,
+              state: floorState,
+              arm: block.arm,
+              hazard: 'floor',
+              pose
+            };
+          }
+
+          const ceilingState = block.arm === 'B' ? readCeilingStateB() : readCeilingState();
+          if (ceilingState.collision) {
+            return {
+              line: block.line,
+              source: block.source,
+              ratio: u,
+              state: ceilingState,
+              arm: block.arm,
+              hazard: 'ceiling',
+              pose
             };
           }
         }
       }
       return null;
     } finally {
-      setPoseArray(saved);
+      setPoseArray(savedA);
+      setPoseArrayB(savedB);
     }
   }
 
   function validateCurrentGcode(showSuccess = true) {
     const source = $('gcodeEditor').value;
-    const result = compileGcode(source, q);
+    const result = compileGcode(source, q, qB);
     if (result.errors.length) {
       setProgramState('error');
       setGcodeStatus(`程式檢查失敗：\n${result.errors.join('\n')}`, 'error');
@@ -1844,7 +2443,10 @@ M30
     const floorIssue = scanProgramFloorSafety(result.blocks);
     if (floorIssue) {
       setProgramState('error');
-      setGcodeStatus(`地板防撞檢查失敗：第 ${floorIssue.line} 行約 ${(floorIssue.ratio * 100).toFixed(1)}% 路徑會使 ${floorIssue.state.part} 的最低離地 ${(floorIssue.state.clearance * 1000).toFixed(1)} mm。\n${floorIssue.source}`, 'error');
+      const hazardText = floorIssue.hazard === 'ceiling'
+        ? `天花板間隙 ${(floorIssue.state.clearance * 1000).toFixed(1)} mm，小於 ${(CEILING_ARM_MARGIN * 1000).toFixed(0)} mm`
+        : `最低離地 ${(floorIssue.state.clearance * 1000).toFixed(1)} mm，小於 20 mm`;
+      setGcodeStatus(`環境防撞檢查失敗：${floorIssue.arm} 手臂，第 ${floorIssue.line} 行約 ${(floorIssue.ratio * 100).toFixed(1)}% 路徑，${floorIssue.state.part} 的${hazardText}。\n${floorIssue.source}`, 'error');
       return null;
     }
     program.blocks = result.blocks;
@@ -1864,7 +2466,11 @@ M30
 
   function programBlockDescription(block) {
     if (!block) return '準備下一區段';
-    if (block.type === 'move') return `${block.rapid ? 'G0' : 'G1'}｜${block.pathMode === 'continuous' ? 'G64 連續' : 'G61 精確停止'}`;
+    if (block.type === 'move') {
+      return `${block.arm || 'A'} 手臂｜${block.rapid ? 'G0' : 'G1'} ${block.cartesian ? 'Cartesian' : 'Joint'}｜${block.pathMode === 'continuous' ? 'G64 連續' : 'G61 精確停止'}`;
+    }
+    if (block.type === 'select') return `選擇 ${block.arm} 手臂`;
+    if (block.type === 'pen') return `${block.arm} 手臂畫筆${block.down ? '接觸' : '抬起'}`;
     if (block.type === 'dwell') return `G4 暫停 ${block.milliseconds} ms`;
     if (block.type === 'pause') return 'M0 程式暫停';
     if (block.type === 'loop') return 'M99 迴圈';
@@ -1887,9 +2493,9 @@ M30
   }
 
   function startOrResumeGcode() {
-    if (abSequence.state === 'running') stopABSequence('切換至 A 手臂 G-code');
+    if (abSequence.state === 'running') stopABSequence('切換至 A/B 雙臂 G-code');
     isMoving = false;
-    setMotionStatus('狀態：G-code 程式控制中。', 'running');
+    setMotionStatus('狀態：A/B 雙臂 G-code 程式控制中。', 'running');
     if (program.state === 'paused' && program.blocks.length && program.source === $('gcodeEditor').value) {
       program.singleStep = false;
       setProgramState('running');
@@ -1898,8 +2504,9 @@ M30
     }
     if (!prepareProgramFromEditor()) return;
     clearTrail();
-    trailEnabled = true;
-    $('toggleTrail').textContent = '關閉軌跡';
+    clearCeilingDrawings();
+    trailEnabled = false;
+    $('toggleTrail').textContent = '開啟軌跡';
     setProgramState('running');
     setGcodeStatus(`程式開始：共 ${program.blocks.length} 個執行區塊；速度倍率 ${Math.round(programOverride * 100)}%。`, 'running');
   }
@@ -1946,7 +2553,7 @@ M30
   }
 
   function restartProgramLoop() {
-    const result = compileGcode(program.source, q);
+    const result = compileGcode(program.source, q, qB);
     if (result.errors.length) {
       setProgramState('error');
       setGcodeStatus(`循環重新編譯失敗：\n${result.errors.join('\n')}`, 'error');
@@ -1955,7 +2562,7 @@ M30
     const floorIssue = scanProgramFloorSafety(result.blocks);
     if (floorIssue) {
       setProgramState('error');
-      setGcodeStatus(`循環地板防撞檢查失敗：第 ${floorIssue.line} 行約 ${(floorIssue.ratio * 100).toFixed(1)}% 路徑會使 ${floorIssue.state.part} 低於安全間隙。`, 'error');
+      setGcodeStatus(`循環環境防撞檢查失敗：${floorIssue.arm} 手臂第 ${floorIssue.line} 行約 ${(floorIssue.ratio * 100).toFixed(1)}% 路徑接近${floorIssue.hazard === 'ceiling' ? '天花板' : '地板'}。`, 'error');
       return false;
     }
     program.blocks = result.blocks;
@@ -1975,7 +2582,30 @@ M30
         setGcodeStatus('程式執行完成。', 'ok');
         return;
       }
+
       const block = program.blocks[program.pc];
+
+      if (block.type === 'select') {
+        $('hudSequenceArm').textContent = block.arm;
+        program.pc += 1;
+        updateProgramProgress(0);
+        setGcodeStatus(`已選擇 ${block.arm} 手臂｜第 ${block.line} 行。`, 'running');
+        continue;
+      }
+
+      if (block.type === 'pen') {
+        if (block.down) beginCeilingStroke(block.arm);
+        else endCeilingStroke(block.arm);
+        $('hudSequenceArm').textContent = block.arm;
+        program.pc += 1;
+        updateProgramProgress(0);
+        setGcodeStatus(
+          `${block.arm} 手臂畫筆${block.down ? '接觸天花板' : '抬起'}｜第 ${block.line} 行。`,
+          'running'
+        );
+        continue;
+      }
+
       if (block.type === 'pause') {
         program.pc += 1;
         updateProgramProgress(0);
@@ -1983,7 +2613,10 @@ M30
         setGcodeStatus(`M0 暫停｜第 ${block.line} 行。按「開始／續跑」繼續。`, 'pause');
         return;
       }
+
       if (block.type === 'end') {
+        endCeilingStroke('A');
+        endCeilingStroke('B');
         program.pc += 1;
         if ($('gcodeLoop').checked) {
           if (!restartProgramLoop()) return;
@@ -1992,27 +2625,44 @@ M30
         }
         setProgramState('completed');
         updateProgramProgress(1);
-        setGcodeStatus(`M${block.code}：程式完成。`, 'ok');
+        setGcodeStatus(`M${block.code}：雙臂程式完成。`, 'ok');
         return;
       }
+
       if (block.type === 'loop') {
+        endCeilingStroke('A');
+        endCeilingStroke('B');
         if (!restartProgramLoop()) return;
         setGcodeStatus(`M99：重新執行，第 ${program.loopCount + 1} 圈。`, 'running');
         continue;
       }
 
       if (block.type === 'move') {
-        const actualDuration = moveDuration(q, block.target, block.feed, block.rapid);
+        const actualStart = block.arm === 'B' ? qB.slice() : q.slice();
+        const actualDuration = block.cartesian
+          ? Math.max(block.duration, moveDuration(actualStart, block.target, 999, true))
+          : moveDuration(actualStart, block.target, block.feed, block.rapid);
         program.current = {
           block,
-          start: q.slice(),
+          start: actualStart,
           duration: actualDuration,
           elapsed: 0
         };
+        $('hudSequenceArm').textContent = block.arm;
       } else if (block.type === 'dwell') {
-        program.current = { block, elapsed: 0, duration: block.milliseconds / 1000 };
+        program.current = {
+          block,
+          elapsed: 0,
+          duration: block.milliseconds / 1000
+        };
       }
-      setGcodeStatus(`執行中｜區塊 ${program.pc + 1}/${program.blocks.length}｜第 ${block.line} 行\n${block.source}\n${programBlockDescription(block)}｜倍率 ${Math.round(programOverride * 100)}%`, 'running');
+
+      setGcodeStatus(
+        `執行中｜區塊 ${program.pc + 1}/${program.blocks.length}｜第 ${block.line} 行
+${block.source}
+${programBlockDescription(block)}｜倍率 ${Math.round(programOverride * 100)}%`,
+        'running'
+      );
     }
   }
 
@@ -2035,8 +2685,9 @@ M30
 
     const current = program.current;
     const block = current.block;
+
     if (block.type === 'dwell') {
-      current.elapsed += dt; // G4 dwell 不受速度倍率影響
+      current.elapsed += dt;
       const u = Math.min(1, current.elapsed / Math.max(current.duration, 1e-6));
       updateProgramProgress(u);
       if (u >= 1) completeCurrentProgramBlock();
@@ -2045,11 +2696,13 @@ M30
 
     current.elapsed += dt * programOverride;
     const u = Math.min(1, current.elapsed / Math.max(current.duration, 1e-6));
-    const previous = q.slice();
+    const previous = block.arm === 'B' ? qB.slice() : q.slice();
+
     const candidate = block.pathMode === 'exact'
       ? (() => {
           const s = u * u * u * (10 + u * (-15 + 6 * u));
-          return current.start.map((value, i) => value + (block.target[i] - value) * s);
+          return current.start.map((value, i) =>
+            value + (block.target[i] - value) * s);
         })()
       : (() => {
           const u2 = u * u;
@@ -2058,40 +2711,74 @@ M30
           const h10 = u3 - 2 * u2 + u;
           const h01 = -2 * u3 + 3 * u2;
           const h11 = u3 - u2;
-          return current.start.map((value, i) => h00 * value
-            + h10 * current.duration * block.vStart[i]
-            + h01 * block.target[i]
-            + h11 * current.duration * block.vEnd[i]);
+          return current.start.map((value, i) =>
+            h00 * value +
+            h10 * current.duration * block.vStart[i] +
+            h01 * block.target[i] +
+            h11 * current.duration * block.vEnd[i]
+          );
         })();
 
     for (let i = 0; i < 6; i++) {
       const [lo, hi] = limits[i];
-      if (!Number.isFinite(candidate[i]) || candidate[i] < lo - 1e-5 || candidate[i] > hi + 1e-5) {
-        setPoseArray(previous);
+      if (!Number.isFinite(candidate[i]) ||
+          candidate[i] < lo - 1e-5 ||
+          candidate[i] > hi + 1e-5) {
+        if (block.arm === 'B') setPoseArrayB(previous);
+        else setPoseArray(previous);
         setProgramState('error');
         program.current = null;
-        setGcodeStatus(`運動規劃錯誤：插值使 J${i + 1} 超出模型軸限，程式已停止。`, 'error');
+        setGcodeStatus(
+          `運動規劃錯誤：${block.arm} 手臂 J${i + 1} 超出模型軸限。`,
+          'error'
+        );
         return;
       }
     }
 
-    const floorResult = movePoseWithFloorGuard(previous, candidate);
+    const floorResult = block.arm === 'B'
+      ? movePoseWithFloorGuardB(previous, candidate)
+      : movePoseWithFloorGuard(previous, candidate);
+
     if (floorResult.blocked) {
       setProgramState('error');
       program.current = null;
-      setGcodeStatus(`地板防撞停止：第 ${block.line} 行執行時，${floorResult.state.part} 將低於 20 mm 安全間隙。程式已停在碰撞前姿態。\n${block.source}`, 'error');
+      setGcodeStatus(
+        `地板防撞停止：${block.arm} 手臂第 ${block.line} 行，${floorResult.state.part} 將低於 20 mm。
+${block.source}`,
+        'error'
+      );
       setMotionStatus('G-code 因地板碰撞風險停止。', 'collision');
-      updateControlFromJoint();
+      return;
+    }
+
+    const ceilingState = block.arm === 'B'
+      ? readCeilingStateB()
+      : readCeilingState();
+
+    if (ceilingState.collision) {
+      if (block.arm === 'B') setPoseArrayB(previous);
+      else setPoseArray(previous);
+      setProgramState('error');
+      program.current = null;
+      setGcodeStatus(
+        `天花板防撞停止：${block.arm} 手臂第 ${block.line} 行，${ceilingState.part} 與天花板間隙僅 ${(ceilingState.clearance * 1000).toFixed(1)} mm。
+${block.source}`,
+        'error'
+      );
+      setMotionStatus('G-code 因天花板碰撞風險停止。', 'collision');
       return;
     }
 
     if (u >= 1) {
-      setPoseArray(block.target);
+      if (block.arm === 'B') setPoseArrayB(block.target);
+      else setPoseArray(block.target);
       completeCurrentProgramBlock();
     } else {
       updateProgramProgress(u);
     }
-    updateControlFromJoint();
+
+    if (block.arm === 'A') updateControlFromJoint();
   }
 
   function renderLimitGrid() {
@@ -2426,10 +3113,17 @@ M30
     validateCurrentGcode(true);
   });
   $('gcodeExample').addEventListener('click', () => {
-    stopGcodeProgram('載入範例', true);
+    stopGcodeProgram('載入 O/X 範例', true);
     $('gcodeEditor').value = GCODE_EXAMPLE;
+    clearCeilingDrawings();
     validateCurrentGcode(true);
   });
+  $('ceilingView').addEventListener('click', () => {
+    camera.position.set(.65, 4.90, 4.45);
+    controls.target.set(.65, 2.35, 0);
+    controls.update();
+  });
+  $('clearCeilingDrawing').addEventListener('click', clearCeilingDrawings);
   $('gcodeStart').addEventListener('click', startOrResumeGcode);
   $('gcodePause').addEventListener('click', () => pauseGcode('使用者暫停'));
   $('gcodeStep').addEventListener('click', singleStepGcode);
@@ -2554,6 +3248,8 @@ M30
 
     scene.updateMatrixWorld(true);
     appendTrailPoint();
+    appendCeilingDrawingPoint('A');
+    appendCeilingDrawingPoint('B');
     updateTCPReadout();
     controls.update();
     renderer.render(scene, camera);
