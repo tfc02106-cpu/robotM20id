@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FANUC M-20iD/25 六軸與 G-code 連續運動模擬QQ｜WebGPU / NVIDIA</title>
+  <title>FANUC M-20iD/25｜G-code、即時座標與地板防撞模擬</title>
   <style>
     :root {
       --bg: #0e2038;
@@ -171,6 +171,28 @@
       backdrop-filter: blur(8px); color: var(--muted); font-size: 11px;
     }
     .hud-badge strong { color: var(--text); }
+    .hud-coordinate-panel {
+      flex: 1 1 100%; min-width: 430px; max-width: 720px;
+      padding: 9px 11px; border-radius: 12px;
+      border: 1px solid rgba(139, 207, 255, .46);
+      background: rgba(10, 31, 54, .86); backdrop-filter: blur(10px);
+      box-shadow: 0 8px 28px rgba(0,0,0,.16);
+    }
+    .hud-coordinate-title {
+      display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px;
+      color: #dff5ff; font-size: 10.5px; font-weight: 800; letter-spacing: .25px;
+    }
+    .hud-coordinate-grid { display: grid; grid-template-columns: repeat(6, minmax(58px, 1fr)); gap: 6px; }
+    .hud-coordinate-item {
+      padding: 5px 6px; border-radius: 7px; text-align: center;
+      background: rgba(35, 76, 111, .66); border: 1px solid rgba(139, 207, 255, .22);
+      color: var(--muted); font-size: 9.5px;
+    }
+    .hud-coordinate-item strong { display: block; margin-top: 2px; color: #ffffff; font-size: 11px; font-variant-numeric: tabular-nums; }
+    .hud-collision { margin-top: 6px; padding: 5px 8px; border-radius: 7px; font-size: 10px; font-weight: 800; }
+    .hud-collision.safe { color: #dfffe5; background: rgba(33, 94, 50, .58); border: 1px solid rgba(117,209,95,.55); }
+    .hud-collision.warn { color: #fff1cb; background: rgba(111, 72, 18, .65); border: 1px solid rgba(255,189,89,.66); }
+    .hud-collision.collision { color: #ffe2e2; background: rgba(113, 28, 37, .74); border: 1px solid rgba(255,104,104,.8); }
 
     .help {
       position: absolute; bottom: 14px; right: 14px; z-index: 2;
@@ -199,6 +221,10 @@
     }
     .motion-status.running { color: #dfffe5; border-color: rgba(117, 209, 95, .62); background: rgba(34, 91, 51, .55); }
     .motion-status.limit { color: #fff0d2; border-color: rgba(255, 189, 89, .8); background: rgba(113, 68, 16, .7); }
+    .motion-status.collision { color: #ffe2e2; border-color: rgba(255,104,104,.86); background: rgba(108,27,36,.76); }
+    .collision-safe-text { color: #bfffc8 !important; }
+    .collision-warn-text { color: #ffe29d !important; }
+    .collision-bad-text { color: #ffb6bd !important; }
     .limit-grid {
       display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 9px;
     }
@@ -240,6 +266,9 @@
       #app { grid-template-columns: 1fr; grid-template-rows: 48vh 52vh; }
       aside { grid-row: 2; border-right: 0; border-top: 1px solid var(--line); }
       main { grid-row: 1; }
+      .hud-coordinate-panel { min-width: min(430px, calc(100vw - 28px)); }
+      .hud-coordinate-grid { grid-template-columns: repeat(3, 1fr); }
+      .hud { left: 14px; right: 14px; }
     }
   </style>
 
@@ -259,7 +288,7 @@
       <div class="logo">F</div>
       <h1>FANUC M-20iD/25 運動與 G-code 模擬</h1>
     </div>
-    <p class="subtitle">關節空間路徑｜G-code-like 排程｜Three.js + WebGPU</p>
+    <p class="subtitle">關節空間路徑｜即時 TCP 座標｜地板防撞｜Three.js + WebGPU</p>
 
     <section class="card">
       <h2>機型名目規格</h2>
@@ -379,7 +408,7 @@
         <button id="startMotion" class="btn primary">啟動選定軸</button>
         <button id="stopMotion" class="btn danger">停止</button>
       </div>
-      <div id="motionStatus" class="motion-status">狀態：停止｜到達任一軸模型軸限時立即停止，不自動反轉。</div>
+      <div id="motionStatus" class="motion-status">狀態：停止｜模型軸限與 20 mm 地板安全間隙保護已啟用。</div>
     </section>
 
     <section class="card">
@@ -424,7 +453,7 @@ M30
 此語法只供瀏覽器模擬，不可直接上傳至 FANUC 控制器。</div>
       <div class="syntax-box">
         支援：<code>G90/G91</code> 絕對／增量、<code>G0/G1</code> 協調關節運動、<code>G4 P毫秒</code>、<code>G61</code> 精確停止、<code>G64</code> 連續模式、<code>M0</code> 暫停、<code>M2/M30</code> 結束、<code>M99</code> 迴圈。<br>
-        關節格式：<code>J1=角度 ... J6=角度 F速度</code>；角度單位為 degree，F 為 degree/s。X/Y/Z Cartesian 指令尚未開放，避免沒有 IK、姿態組態與奇異點檢查時產生錯誤路徑。
+        關節格式：<code>J1=角度 ... J6=角度 F速度</code>；角度單位為 degree，F 為 degree/s。程式檢查與執行期間均會套用 20 mm 地板安全間隙。X/Y/Z Cartesian 指令尚未開放，避免沒有 IK、姿態組態與奇異點檢查時產生錯誤路徑。
       </div>
     </section>
 
@@ -442,16 +471,19 @@ M30
     </section>
 
     <section class="card">
-      <h2>模擬世界座標與姿態</h2>
+      <h2>TCP 即時座標與地板防撞</h2>
       <div class="data-grid">
-        <div class="data-cell"><span>X world</span><strong id="posX">0.0 mm</strong></div>
-        <div class="data-cell"><span>Y world</span><strong id="posY">0.0 mm</strong></div>
-        <div class="data-cell"><span>Z world</span><strong id="posZ">0.0 mm</strong></div>
-        <div class="data-cell"><span>Euler X</span><strong id="rotX">0.0°</strong></div>
-        <div class="data-cell"><span>Euler Y</span><strong id="rotY">0.0°</strong></div>
-        <div class="data-cell"><span>Euler Z</span><strong id="rotZ">0.0°</strong></div>
+        <div class="data-cell"><span>X BASE</span><strong id="posX">0.0 mm</strong></div>
+        <div class="data-cell"><span>Y BASE</span><strong id="posY">0.0 mm</strong></div>
+        <div class="data-cell"><span>Z BASE（向上）</span><strong id="posZ">0.0 mm</strong></div>
+        <div class="data-cell"><span>RX 模型</span><strong id="rotX">0.0°</strong></div>
+        <div class="data-cell"><span>RY 模型</span><strong id="rotY">0.0°</strong></div>
+        <div class="data-cell"><span>RZ 模型</span><strong id="rotZ">0.0°</strong></div>
+        <div class="data-cell"><span>TCP 離地高度</span><strong id="tcpClearance">0.0 mm</strong></div>
+        <div class="data-cell"><span>機構最低離地</span><strong id="minClearance">0.0 mm</strong></div>
+        <div class="data-cell"><span>地板防撞狀態</span><strong id="collisionState">檢查中</strong></div>
       </div>
-      <p class="note">此處是 Three.js 世界座標與 XYZ Euler 角，不等同 FANUC 使用者座標、工具座標或 W/P/R。模型會檢查名目軸行程，但未納入實機 mastering、DCS、硬限位、自碰撞、治具干涉、奇異點、負載慣量及伺服停止距離。</p>
+      <p class="note">BASE 模型座標原點設於基座中心的地板安裝面，X 向右、Y 為水平深度、Z 向上；由 Three.js 世界座標換算為 X=Xworld、Y=−Zworld、Z=Yworld。RX/RY/RZ 是模型 XYZ Euler 角，不等同 FANUC W/P/R。地板防撞以簡化外殼的包圍盒估算，保留 20 mm 安全間隙；仍未取代原廠 CAD、ROBOGUIDE、DCS、自碰撞與治具干涉驗證。</p>
     </section>
   </aside>
 
@@ -462,6 +494,18 @@ M30
       <div class="hud-badge">角度：<strong id="hudAngle">0.0°</strong></div>
       <div class="hud-badge">程式：<strong id="hudProgram">待命</strong></div>
       <div class="hud-badge">FPS：<strong id="fps">--</strong></div>
+      <div class="hud-coordinate-panel">
+        <div class="hud-coordinate-title"><span>TCP 即時座標｜BASE 模型座標</span><span>位置 mm｜姿態 deg</span></div>
+        <div class="hud-coordinate-grid">
+          <div class="hud-coordinate-item">X<strong id="hudTcpX">0.0</strong></div>
+          <div class="hud-coordinate-item">Y<strong id="hudTcpY">0.0</strong></div>
+          <div class="hud-coordinate-item">Z<strong id="hudTcpZ">0.0</strong></div>
+          <div class="hud-coordinate-item">RX<strong id="hudRotX">0.0</strong></div>
+          <div class="hud-coordinate-item">RY<strong id="hudRotY">0.0</strong></div>
+          <div class="hud-coordinate-item">RZ<strong id="hudRotZ">0.0</strong></div>
+        </div>
+        <div id="hudCollision" class="hud-collision safe">地板防撞：檢查中</div>
+      </div>
     </div>
     <div class="help">模擬器自訂 G-code-like 語法｜非 FANUC TP/LS｜左鍵旋轉｜滾輪縮放｜右鍵平移</div>
   </main>
@@ -628,7 +672,9 @@ M30
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
     const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: false, side: THREE.DoubleSide });
-    return mesh(new THREE.PlaneGeometry(width,height), mat, parent, position, rotation);
+    const label = mesh(new THREE.PlaneGeometry(width,height), mat, parent, position, rotation);
+    label.userData.ignoreFloorCollision = true;
+    return label;
   }
 
   const robotRoot = new THREE.Group();
@@ -721,6 +767,125 @@ M30
     new THREE.MeshBasicMaterial({ color: 0xff4d67 })
   );
   tcp.add(tcpMarker);
+  tcpMarker.userData.ignoreFloorCollision = true;
+
+  // ------------------------------
+  // 地板碰撞近似檢查
+  // ------------------------------
+  const FLOOR_LEVEL_Y = 0;
+  const FLOOR_SAFETY_MARGIN = 0.020; // 20 mm，保守軟體間隙
+  const FLOOR_WARNING_MARGIN = 0.080;
+  const collisionMeshes = [];
+  const collisionBox = new THREE.Box3();
+  const baseFromWorldRotation = new THREE.Matrix4().set(
+    1, 0, 0, 0,
+    0, 0,-1, 0,
+    0, 1, 0, 0,
+    0, 0, 0, 1
+  );
+
+  function isUnderObject(object, ancestor) {
+    for (let node = object; node; node = node.parent) if (node === ancestor) return true;
+    return false;
+  }
+
+  function floorCollisionPartName(object) {
+    if (isUnderObject(object, tool)) return '工具／夾爪';
+    if (isUnderObject(object, j6)) return 'J6 法蘭';
+    if (isUnderObject(object, j5)) return 'J5 腕部';
+    if (isUnderObject(object, j4)) return 'J4 腕部';
+    if (isUnderObject(object, j3)) return 'J3 主臂';
+    if (isUnderObject(object, j2)) return 'J2 大臂';
+    return 'J1 上部';
+  }
+
+  j1.traverse(object => {
+    if (!object.isMesh || object.userData.ignoreFloorCollision || object.geometry?.type === 'TubeGeometry') return;
+    if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
+    object.userData.floorPartName = floorCollisionPartName(object);
+    collisionMeshes.push(object);
+  });
+
+  function readFloorState() {
+    scene.updateMatrixWorld(true);
+    let minY = Infinity;
+    let lowestObject = null;
+    for (const object of collisionMeshes) {
+      if (!object.visible || !object.geometry?.boundingBox) continue;
+      collisionBox.copy(object.geometry.boundingBox).applyMatrix4(object.matrixWorld);
+      if (collisionBox.min.y < minY) {
+        minY = collisionBox.min.y;
+        lowestObject = object;
+      }
+    }
+    const tcpWorld = new THREE.Vector3();
+    tcp.getWorldPosition(tcpWorld);
+    const clearance = minY - FLOOR_LEVEL_Y;
+    return {
+      minY, clearance, tcpClearance: tcpWorld.y - FLOOR_LEVEL_Y,
+      collision: clearance < FLOOR_SAFETY_MARGIN - 1e-7,
+      contact: clearance < 0,
+      warning: clearance < FLOOR_WARNING_MARGIN,
+      part: lowestObject?.userData.floorPartName || '未知部位'
+    };
+  }
+
+  function setPoseArray(pose) {
+    for (let i = 0; i < 6; i++) q[i] = pose[i];
+    applyJointRotations();
+    scene.updateMatrixWorld(true);
+  }
+
+  function evaluateFloorAtPose(pose) {
+    const saved = q.slice();
+    setPoseArray(pose);
+    const state = readFloorState();
+    setPoseArray(saved);
+    return state;
+  }
+
+  function movePoseWithFloorGuard(startPose, targetPose, iterations = 16) {
+    setPoseArray(startPose);
+    const startState = readFloorState();
+    setPoseArray(targetPose);
+    const targetState = readFloorState();
+
+    // 若目前已處於警戒區，允許朝增加間隙的方向退出。
+    if (!targetState.collision || (startState.collision && targetState.clearance > startState.clearance + 1e-6)) {
+      return { blocked: false, state: targetState, fraction: 1 };
+    }
+
+    let low = 0;
+    let high = 1;
+    let safeState = startState;
+    for (let n = 0; n < iterations; n++) {
+      const fraction = (low + high) / 2;
+      const candidate = startPose.map((value, i) => value + (targetPose[i] - value) * fraction);
+      setPoseArray(candidate);
+      const state = readFloorState();
+      if (state.collision) high = fraction;
+      else { low = fraction; safeState = state; }
+    }
+    const safePose = startPose.map((value, i) => value + (targetPose[i] - value) * low);
+    setPoseArray(safePose);
+    return { blocked: true, state: targetState, safeState, fraction: low, pose: safePose };
+  }
+
+  function updateFloorReadout(state) {
+    const clearanceMm = state.clearance * 1000;
+    const tcpMm = state.tcpClearance * 1000;
+    $('tcpClearance').textContent = `${tcpMm.toFixed(1)} mm`;
+    $('minClearance').textContent = `${clearanceMm.toFixed(1)} mm`;
+    const collisionText = state.contact ? '已穿透地板' : state.collision ? '安全間隙不足' : state.warning ? '接近地板' : '安全';
+    const cssClass = state.collision ? 'collision-bad-text' : state.warning ? 'collision-warn-text' : 'collision-safe-text';
+    $('collisionState').className = cssClass;
+    $('collisionState').textContent = collisionText;
+    const hud = $('hudCollision');
+    hud.className = `hud-collision ${state.collision ? 'collision' : state.warning ? 'warn' : 'safe'}`;
+    hud.textContent = `地板防撞：${collisionText}｜最低 ${clearanceMm.toFixed(1)} mm｜${state.part}`;
+    floor.material.emissive.setHex(state.collision ? 0x5b111b : state.warning ? 0x4a3108 : 0x000000);
+    floor.material.emissiveIntensity = state.collision ? 0.85 : state.warning ? 0.40 : 0;
+  }
 
   // 1831 mm 名目伸距參考圈
   const reachRing = new THREE.Mesh(
@@ -871,10 +1036,15 @@ M30
   function setJointAngle(index, angle, source = 'manual') {
     if (source === 'manual') cancelProgramForManual('手動關節輸入接管');
     const [lo, hi] = limits[index];
-    const clamped = clampJoint(index, angle);
-    q[index] = clamped;
-    applyJointRotations();
-    if (angle < lo || angle > hi) {
+    const previous = q.slice();
+    const candidate = q.slice();
+    candidate[index] = clampJoint(index, angle);
+    const floorResult = movePoseWithFloorGuard(previous, candidate);
+
+    if (floorResult.blocked) {
+      isMoving = false;
+      setMotionStatus(`地板防撞停止：J${index+1} 的要求姿態會使 ${floorResult.state.part} 低於 20 mm 安全間隙；已停在安全邊界。`, 'collision');
+    } else if (angle < lo || angle > hi) {
       isMoving = false;
       const boundary = angle < lo ? lo : hi;
       setMotionStatus(`模型軸限保護：J${index+1} 已限制在 ${formatLimit(boundary)}。`, 'limit');
@@ -897,16 +1067,24 @@ M30
   const presets = {
     home: [0, -34, 72, 0, -38, 0],
     inspect: [35, -55, 95, 40, -45, 70],
-    fold: [-20, 72, -145, 0, 82, 0]
+    fold: [0, -72, 145, 0, -73, 0]
   };
 
   function setPose(target, source = 'manual') {
     if (source === 'manual') cancelProgramForManual('切換模型參考姿態');
     isMoving = false;
-    target.forEach((v,i) => q[i] = clampJoint(i,v));
-    applyJointRotations();
+    const candidate = target.map((value, i) => clampJoint(i, value));
+    const state = evaluateFloorAtPose(candidate);
+    if (state.collision) {
+      setMotionStatus(`姿態拒絕：${state.part} 的最低離地 ${(state.clearance * 1000).toFixed(1)} mm，小於 20 mm 安全間隙。`, 'collision');
+      updateControlFromJoint();
+      return false;
+    }
+    setPoseArray(candidate);
     clearTrail();
     updateControlFromJoint();
+    setMotionStatus('模型參考姿態已套用；地板防撞檢查通過。');
+    return true;
   }
 
   function clearTrail() {
@@ -938,18 +1116,36 @@ M30
   }
 
   function updateTCPReadout() {
-    const p = new THREE.Vector3();
-    const quat = new THREE.Quaternion();
+    const worldPosition = new THREE.Vector3();
+    const worldQuaternion = new THREE.Quaternion();
     const scale = new THREE.Vector3();
-    const world = tcp.matrixWorld;
-    world.decompose(p, quat, scale);
-    const e = new THREE.Euler().setFromQuaternion(quat, 'XYZ');
-    $('posX').textContent = `${(p.x * 1000).toFixed(1)} mm`;
-    $('posY').textContent = `${(p.y * 1000).toFixed(1)} mm`;
-    $('posZ').textContent = `${(p.z * 1000).toFixed(1)} mm`;
-    $('rotX').textContent = `${THREE.MathUtils.radToDeg(e.x).toFixed(1)}°`;
-    $('rotY').textContent = `${THREE.MathUtils.radToDeg(e.y).toFixed(1)}°`;
-    $('rotZ').textContent = `${THREE.MathUtils.radToDeg(e.z).toFixed(1)}°`;
+    tcp.matrixWorld.decompose(worldPosition, worldQuaternion, scale);
+
+    // Three.js: X right, Y up, Z depth. BASE model: X right, Y horizontal depth, Z up.
+    const basePosition = new THREE.Vector3(worldPosition.x, -worldPosition.z, worldPosition.y);
+    const worldRotation = new THREE.Matrix4().makeRotationFromQuaternion(worldQuaternion);
+    const baseRotation = baseFromWorldRotation.clone().multiply(worldRotation);
+    const e = new THREE.Euler().setFromRotationMatrix(baseRotation, 'XYZ');
+    const x = basePosition.x * 1000;
+    const y = basePosition.y * 1000;
+    const z = basePosition.z * 1000;
+    const rx = THREE.MathUtils.radToDeg(e.x);
+    const ry = THREE.MathUtils.radToDeg(e.y);
+    const rz = THREE.MathUtils.radToDeg(e.z);
+
+    $('posX').textContent = `${x.toFixed(1)} mm`;
+    $('posY').textContent = `${y.toFixed(1)} mm`;
+    $('posZ').textContent = `${z.toFixed(1)} mm`;
+    $('rotX').textContent = `${rx.toFixed(1)}°`;
+    $('rotY').textContent = `${ry.toFixed(1)}°`;
+    $('rotZ').textContent = `${rz.toFixed(1)}°`;
+    $('hudTcpX').textContent = x.toFixed(1);
+    $('hudTcpY').textContent = y.toFixed(1);
+    $('hudTcpZ').textContent = z.toFixed(1);
+    $('hudRotX').textContent = rx.toFixed(1);
+    $('hudRotY').textContent = ry.toFixed(1);
+    $('hudRotZ').textContent = rz.toFixed(1);
+    updateFloorReadout(readFloorState());
   }
 
   // ------------------------------
@@ -1203,12 +1399,60 @@ M30
     return { blocks, errors, warnings, endQ: cursor };
   }
 
+  function interpolateProgramPose(block, u) {
+    if (block.pathMode === 'exact') {
+      const s = u * u * u * (10 + u * (-15 + 6 * u));
+      return block.start.map((value, i) => value + (block.target[i] - value) * s);
+    }
+    const u2 = u * u;
+    const u3 = u2 * u;
+    const h00 = 2 * u3 - 3 * u2 + 1;
+    const h10 = u3 - 2 * u2 + u;
+    const h01 = -2 * u3 + 3 * u2;
+    const h11 = u3 - u2;
+    return block.start.map((value, i) => h00 * value
+      + h10 * block.duration * block.vStart[i]
+      + h01 * block.target[i]
+      + h11 * block.duration * block.vEnd[i]);
+  }
+
+  function scanProgramFloorSafety(blocks) {
+    const saved = q.slice();
+    try {
+      for (const block of blocks) {
+        if (block.type !== 'move') continue;
+        const maxDelta = Math.max(...block.target.map((value, i) => Math.abs(value - block.start[i])));
+        const samples = Math.max(12, Math.min(220, Math.ceil(maxDelta / 1.5)));
+        for (let sampleIndex = 0; sampleIndex <= samples; sampleIndex++) {
+          const u = sampleIndex / samples;
+          const pose = interpolateProgramPose(block, u);
+          setPoseArray(pose);
+          const state = readFloorState();
+          if (state.collision) {
+            return {
+              line: block.line, source: block.source, ratio: u, state, pose
+            };
+          }
+        }
+      }
+      return null;
+    } finally {
+      setPoseArray(saved);
+    }
+  }
+
   function validateCurrentGcode(showSuccess = true) {
     const source = $('gcodeEditor').value;
     const result = compileGcode(source, q);
     if (result.errors.length) {
       setProgramState('error');
       setGcodeStatus(`程式檢查失敗：\n${result.errors.join('\n')}`, 'error');
+      return null;
+    }
+    const floorIssue = scanProgramFloorSafety(result.blocks);
+    if (floorIssue) {
+      setProgramState('error');
+      setGcodeStatus(`地板防撞檢查失敗：第 ${floorIssue.line} 行約 ${(floorIssue.ratio * 100).toFixed(1)}% 路徑會使 ${floorIssue.state.part} 的最低離地 ${(floorIssue.state.clearance * 1000).toFixed(1)} mm。\n${floorIssue.source}`, 'error');
       return null;
     }
     program.blocks = result.blocks;
@@ -1314,6 +1558,12 @@ M30
       setGcodeStatus(`循環重新編譯失敗：\n${result.errors.join('\n')}`, 'error');
       return false;
     }
+    const floorIssue = scanProgramFloorSafety(result.blocks);
+    if (floorIssue) {
+      setProgramState('error');
+      setGcodeStatus(`循環地板防撞檢查失敗：第 ${floorIssue.line} 行約 ${(floorIssue.ratio * 100).toFixed(1)}% 路徑會使 ${floorIssue.state.part} 低於安全間隙。`, 'error');
+      return false;
+    }
     program.blocks = result.blocks;
     program.pc = 0;
     program.current = null;
@@ -1401,30 +1651,29 @@ M30
 
     current.elapsed += dt * programOverride;
     const u = Math.min(1, current.elapsed / Math.max(current.duration, 1e-6));
-    if (block.pathMode === 'exact') {
-      const s = u * u * u * (10 + u * (-15 + 6 * u)); // quintic smoothstep
-      for (let i = 0; i < 6; i++) q[i] = current.start[i] + (block.target[i] - current.start[i]) * s;
-    } else {
-      // Cubic Hermite: adjacent G64 blocks share waypoint tangent for C1 joint motion.
-      const u2 = u * u;
-      const u3 = u2 * u;
-      const h00 = 2 * u3 - 3 * u2 + 1;
-      const h10 = u3 - 2 * u2 + u;
-      const h01 = -2 * u3 + 3 * u2;
-      const h11 = u3 - u2;
-      for (let i = 0; i < 6; i++) {
-        q[i] = h00 * current.start[i]
-          + h10 * current.duration * block.vStart[i]
-          + h01 * block.target[i]
-          + h11 * current.duration * block.vEnd[i];
-      }
-    }
+    const previous = q.slice();
+    const candidate = block.pathMode === 'exact'
+      ? (() => {
+          const s = u * u * u * (10 + u * (-15 + 6 * u));
+          return current.start.map((value, i) => value + (block.target[i] - value) * s);
+        })()
+      : (() => {
+          const u2 = u * u;
+          const u3 = u2 * u;
+          const h00 = 2 * u3 - 3 * u2 + 1;
+          const h10 = u3 - 2 * u2 + u;
+          const h01 = -2 * u3 + 3 * u2;
+          const h11 = u3 - u2;
+          return current.start.map((value, i) => h00 * value
+            + h10 * current.duration * block.vStart[i]
+            + h01 * block.target[i]
+            + h11 * current.duration * block.vEnd[i]);
+        })();
 
     for (let i = 0; i < 6; i++) {
       const [lo, hi] = limits[i];
-      if (!Number.isFinite(q[i]) || q[i] < lo - 1e-5 || q[i] > hi + 1e-5) {
-        q[i] = clampJoint(i, Number.isFinite(q[i]) ? q[i] : 0);
-        applyJointRotations();
+      if (!Number.isFinite(candidate[i]) || candidate[i] < lo - 1e-5 || candidate[i] > hi + 1e-5) {
+        setPoseArray(previous);
         setProgramState('error');
         program.current = null;
         setGcodeStatus(`運動規劃錯誤：插值使 J${i + 1} 超出模型軸限，程式已停止。`, 'error');
@@ -1432,13 +1681,22 @@ M30
       }
     }
 
+    const floorResult = movePoseWithFloorGuard(previous, candidate);
+    if (floorResult.blocked) {
+      setProgramState('error');
+      program.current = null;
+      setGcodeStatus(`地板防撞停止：第 ${block.line} 行執行時，${floorResult.state.part} 將低於 20 mm 安全間隙。程式已停在碰撞前姿態。\n${block.source}`, 'error');
+      setMotionStatus('G-code 因地板碰撞風險停止。', 'collision');
+      updateControlFromJoint();
+      return;
+    }
+
     if (u >= 1) {
-      for (let i = 0; i < 6; i++) q[i] = block.target[i];
+      setPoseArray(block.target);
       completeCurrentProgramBlock();
     } else {
       updateProgramProgress(u);
     }
-    applyJointRotations();
     updateControlFromJoint();
   }
 
@@ -1731,7 +1989,7 @@ M30
     }
     isMoving = true;
     const axes = motionMode === 'dual' ? `J${selectedJoint+1} + J${secondJoint+1}` : `J${selectedJoint+1}`;
-    setMotionStatus(`運動中：${axes}｜模型軸限保護已啟用。`, 'running');
+    setMotionStatus(`運動中：${axes}｜模型軸限與 20 mm 地板安全間隙保護已啟用。`, 'running');
   }
 
   function stopContinuousMotion(reason = '使用者停止') {
@@ -1862,18 +2120,24 @@ M30
         }
       }
 
+      const previous = q.slice();
+      const candidate = q.slice();
       for (const move of activeMoves) {
-        q[move.jointIndex] += move.dir * move.speed * dt * frameFraction;
-        q[move.jointIndex] = clampJoint(move.jointIndex, q[move.jointIndex]);
+        candidate[move.jointIndex] += move.dir * move.speed * dt * frameFraction;
+        candidate[move.jointIndex] = clampJoint(move.jointIndex, candidate[move.jointIndex]);
       }
 
-      if (limitHit && frameFraction < 1) {
+      const floorResult = movePoseWithFloorGuard(previous, candidate);
+      if (floorResult.blocked) {
+        isMoving = false;
+        setMotionStatus(`地板防撞停止：${floorResult.state.part} 將低於 20 mm 安全間隙；已停在碰撞前姿態。`, 'collision');
+      } else if (limitHit && frameFraction < 1) {
         q[limitHit.jointIndex] = limitHit.boundary;
+        applyJointRotations();
         isMoving = false;
         setMotionStatus(`模型軸限停止：J${limitHit.jointIndex+1} 到達${limitHit.direction}限位 ${formatLimit(limitHit.boundary)}。`, 'limit');
       }
 
-      applyJointRotations();
       updateControlFromJoint();
     }
 
