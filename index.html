@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>六軸機械手臂 GPU 運動模擬器</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#151d31; --panel2:#0f1729; --text:#e8eefc;
+    --muted:#9aa8c5; --accent:#62a8ff; --ok:#55d98d; --warn:#ffd166; --danger:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:linear-gradient(135deg,#07101e,#111a31);
+    color:var(--text); font-family:Arial,"Noto Sans TC",sans-serif; overflow:hidden;
+  }
+  #app{height:100vh;display:grid;grid-template-columns:360px 1fr}
+  #panel{
+    background:rgba(13,20,37,.96);border-right:1px solid #2b3652;
+    padding:16px;overflow:auto
+  }
+  h1{font-size:20px;margin:0 0 8px}
+  h2{font-size:14px;margin:18px 0 8px;color:#bcd4ff}
+  .note{font-size:12px;color:var(--muted);line-height:1.55}
+  .card{background:var(--panel);border:1px solid #26324e;border-radius:12px;padding:12px;margin-top:10px}
+  label{font-size:12px;color:#b8c5de}
+  select,input[type=number],button{
+    width:100%;border:1px solid #344260;border-radius:8px;background:#0b1325;
+    color:white;padding:9px
+  }
+  input[type=range]{width:100%}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .btnrow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
+  button{cursor:pointer;font-weight:700}
+  button.primary{background:#1769d2}
+  button.good{background:#157347}
+  button.stop{background:#9d2933}
+  .value{font-family:Consolas,monospace;color:#8fc4ff}
+  .joint{padding:8px;border-bottom:1px solid #25314b}
+  .joint:last-child{border-bottom:0}
+  .joint-head{display:flex;justify-content:space-between;font-size:12px}
+  #viewport{position:relative;min-width:0}
+  #canvasWrap{position:absolute;inset:0}
+  #hud{
+    position:absolute;top:14px;right:14px;width:300px;padding:12px;
+    background:rgba(5,10,20,.78);backdrop-filter:blur(8px);
+    border:1px solid #31405f;border-radius:12px;font-size:12px;line-height:1.6
+  }
+  #statusDot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--warn);margin-right:6px}
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  td{padding:3px;border-bottom:1px solid #25314b}
+  td:last-child{text-align:right;font-family:Consolas,monospace}
+  .legend{position:absolute;left:14px;bottom:14px;background:rgba(5,10,20,.72);padding:8px 10px;border-radius:8px;font-size:11px}
+  @media(max-width:900px){
+    #app{grid-template-columns:1fr;grid-template-rows:48vh 52vh}
+    #panel{border-right:0;border-bottom:1px solid #2b3652}
+    #hud{width:250px}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <h1>六軸機械手臂運動模擬器</h1>
+    <div class="note">
+      可指定 J1–J6 單軸運動、設定角度與速度，或執行自動往復。
+      畫面由 WebGL GPU 渲染；若瀏覽器實際使用 NVIDIA 顯卡，GPU 資訊區會顯示 NVIDIA。
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0">單軸控制</h2>
+      <label>選擇運動軸</label>
+      <select id="axisSelect">
+        <option value="0">J1－底座旋轉</option>
+        <option value="1">J2－肩部</option>
+        <option value="2">J3－肘部</option>
+        <option value="3">J4－腕部旋轉</option>
+        <option value="4">J5－腕部擺動</option>
+        <option value="5">J6－法蘭旋轉</option>
+      </select>
+      <div style="height:10px"></div>
+      <div class="joint-head"><span>目標角度</span><span id="targetLabel" class="value">0.0°</span></div>
+      <input id="targetSlider" type="range" min="-170" max="170" step="0.1" value="0">
+      <div class="row">
+        <div>
+          <label>目標角度（°）</label>
+          <input id="targetInput" type="number" min="-170" max="170" step="0.1" value="0">
+        </div>
+        <div>
+          <label>速度（°/s）</label>
+          <input id="speedInput" type="number" min="1" max="180" step="1" value="35">
+        </div>
+      </div>
+      <div style="height:9px"></div>
+      <div class="btnrow">
+        <button id="moveBtn" class="primary">移動</button>
+        <button id="autoBtn" class="good">往復</button>
+        <button id="stopBtn" class="stop">停止</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0">六軸即時角度</h2>
+      <div id="jointControls"></div>
+      <div class="row" style="margin-top:10px">
+        <button id="homeBtn">回原點</button>
+        <button id="randomBtn">隨機姿態</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0">GPU 運算</h2>
+      <button id="gpuTestBtn">執行 GPU Shader 測試</button>
+      <div id="gpuTestResult" class="note" style="margin-top:8px">尚未執行。</div>
+    </div>
+  </aside>
+
+  <main id="viewport">
+    <div id="canvasWrap"></div>
+    <div id="hud">
+      <div><span id="statusDot"></span><b id="runStatus">待機</b></div>
+      <table>
+        <tr><td>WebGL</td><td id="webglVersion">—</td></tr>
+        <tr><td>GPU Vendor</td><td id="gpuVendor">—</td></tr>
+        <tr><td>GPU Renderer</td><td id="gpuRenderer">—</td></tr>
+        <tr><td>FPS</td><td id="fps">—</td></tr>
+        <tr><td>末端 X</td><td id="tcpX">—</td></tr>
+        <tr><td>末端 Y</td><td id="tcpY">—</td></tr>
+        <tr><td>末端 Z</td><td id="tcpZ">—</td></tr>
+      </table>
+    </div>
+    <div class="legend">滑鼠左鍵旋轉視角｜滾輪縮放｜右鍵平移</div>
+  </main>
+</div>
+
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js";
+import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/controls/OrbitControls.js";
+
+const wrap = document.getElementById("canvasWrap");
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x09111f);
+
+const camera = new THREE.PerspectiveCamera(45, wrap.clientWidth / wrap.clientHeight, 0.1, 100);
+camera.position.set(5.6, 4.2, 6.2);
+
+const renderer = new THREE.WebGLRenderer({antialias:true, powerPreference:"high-performance"});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+renderer.shadowMap.enabled = true;
+wrap.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.7, 0);
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0xbfd8ff,0x182033,1.8));
+const sun = new THREE.DirectionalLight(0xffffff,2.6);
+sun.position.set(4,7,4); sun.castShadow=true; scene.add(sun);
+
+const grid = new THREE.GridHelper(12,24,0x46628f,0x24324d);
+scene.add(grid);
+const axes = new THREE.AxesHelper(1.2); scene.add(axes);
+
+const floor = new THREE.Mesh(
+  new THREE.CircleGeometry(5.5,64),
+  new THREE.MeshStandardMaterial({color:0x101a2c,roughness:.85,metalness:.05})
+);
+floor.rotation.x=-Math.PI/2; floor.position.y=-.015; floor.receiveShadow=true; scene.add(floor);
+
+const matBody = new THREE.MeshStandardMaterial({color:0xd9e2f0,metalness:.45,roughness:.32});
+const matJoint = new THREE.MeshStandardMaterial({color:0x267de3,metalness:.5,roughness:.25});
+const matDark = new THREE.MeshStandardMaterial({color:0x17233a,metalness:.6,roughness:.28});
+const matEnd = new THREE.MeshStandardMaterial({color:0xffb347,metalness:.4,roughness:.3});
+
+function cyl(r, h, mat, axis="y"){
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,36),mat);
+  if(axis==="x") m.rotation.z=Math.PI/2;
+  if(axis==="z") m.rotation.x=Math.PI/2;
+  m.castShadow=true; m.receiveShadow=true; return m;
+}
+function box(x,y,z,mat){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(x,y,z),mat);
+  m.castShadow=true; m.receiveShadow=true; return m;
+}
+
+// Hierarchical six-axis robot
+const base = new THREE.Group(); scene.add(base);
+const pedestal = cyl(.72,.35,matDark); pedestal.position.y=.175; base.add(pedestal);
+
+const J1 = new THREE.Group(); J1.position.y=.35; base.add(J1);
+const shoulderBase=cyl(.55,.55,matJoint); shoulderBase.position.y=.275; J1.add(shoulderBase);
+
+const J2 = new THREE.Group(); J2.position.set(0,.55,0); J1.add(J2);
+const shoulder=cyl(.42,.55,matDark,"z"); J2.add(shoulder);
+const link1=box(.52,1.7,.52,matBody); link1.position.y=.9; J2.add(link1);
+
+const J3 = new THREE.Group(); J3.position.set(0,1.75,0); J2.add(J3);
+const elbow=cyl(.38,.58,matJoint,"z"); J3.add(elbow);
+const link2=box(.42,1.45,.42,matBody); link2.position.y=.78; J3.add(link2);
+
+const J4 = new THREE.Group(); J4.position.set(0,1.5,0); J3.add(J4);
+const wrist1=cyl(.3,.5,matDark,"y"); wrist1.position.y=.18; J4.add(wrist1);
+
+const J5 = new THREE.Group(); J5.position.set(0,.42,0); J4.add(J5);
+const wrist2=cyl(.27,.48,matJoint,"z"); J5.add(wrist2);
+const shortLink=box(.3,.55,.3,matBody); shortLink.position.y=.34; J5.add(shortLink);
+
+const J6 = new THREE.Group(); J6.position.set(0,.66,0); J5.add(J6);
+const flange=cyl(.24,.25,matEnd,"y"); flange.position.y=.12; J6.add(flange);
+const tool=box(.13,.5,.13,matEnd); tool.position.y=.46; J6.add(tool);
+const tcp = new THREE.Object3D(); tcp.position.y=.76; J6.add(tcp);
+
+const joints=[J1,J2,J3,J4,J5,J6];
+const limits=[
+  [-170,170],[-110,120],[-150,150],[-180,180],[-120,120],[-360,360]
+];
+const axesRot=["y","z","z","y","z","y"];
+const angles=[0,-25,55,0,35,0];
+const targets=[...angles];
+let selected=0, moving=false, auto=false, autoDir=1;
+
+function applyAngles(){
+  joints.forEach((j,i)=>j.rotation[axesRot[i]]=THREE.MathUtils.degToRad(angles[i]));
+}
+applyAngles();
+
+const controlsDiv=document.getElementById("jointControls");
+const sliders=[];
+for(let i=0;i<6;i++){
+  const d=document.createElement("div"); d.className="joint";
+  d.innerHTML=`<div class="joint-head"><span>J${i+1}</span><span id="jv${i}" class="value">${angles[i].toFixed(1)}°</span></div>
+  <input id="js${i}" type="range" min="${limits[i][0]}" max="${limits[i][1]}" step="0.1" value="${angles[i]}">`;
+  controlsDiv.appendChild(d);
+  const s=d.querySelector("input"); sliders.push(s);
+  s.addEventListener("input",()=>{
+    angles[i]=Number(s.value); targets[i]=angles[i]; moving=false; auto=false;
+    applyAngles(); refreshUI();
+  });
+}
+
+const axisSelect=document.getElementById("axisSelect");
+const targetSlider=document.getElementById("targetSlider");
+const targetInput=document.getElementById("targetInput");
+const targetLabel=document.getElementById("targetLabel");
+const speedInput=document.getElementById("speedInput");
+
+function syncSelectedLimits(){
+  selected=Number(axisSelect.value);
+  targetSlider.min=limits[selected][0]; targetSlider.max=limits[selected][1];
+  targetInput.min=limits[selected][0]; targetInput.max=limits[selected][1];
+  targetSlider.value=angles[selected]; targetInput.value=angles[selected];
+  targetLabel.textContent=angles[selected].toFixed(1)+"°";
+}
+axisSelect.addEventListener("change",syncSelectedLimits);
+targetSlider.addEventListener("input",()=>{
+  targetInput.value=targetSlider.value; targetLabel.textContent=Number(targetSlider.value).toFixed(1)+"°";
+});
+targetInput.addEventListener("input",()=>{
+  const v=Math.max(limits[selected][0],Math.min(limits[selected][1],Number(targetInput.value)));
+  targetSlider.value=v; targetLabel.textContent=v.toFixed(1)+"°";
+});
+
+document.getElementById("moveBtn").onclick=()=>{
+  auto=false; targets[selected]=Number(targetInput.value); moving=true; setStatus("執行單軸定位", "#55d98d");
+};
+document.getElementById("autoBtn").onclick=()=>{
+  moving=false; auto=true; autoDir=1; setStatus(`J${selected+1} 自動往復`, "#55d98d");
+};
+document.getElementById("stopBtn").onclick=()=>{
+  moving=false; auto=false; targets.splice(0,6,...angles); setStatus("已停止", "#ff6b6b");
+};
+document.getElementById("homeBtn").onclick=()=>{
+  auto=false; moving=true; [0,-25,55,0,35,0].forEach((v,i)=>targets[i]=v); setStatus("返回原點", "#55d98d");
+};
+document.getElementById("randomBtn").onclick=()=>{
+  auto=false; moving=true;
+  limits.forEach((lim,i)=>targets[i]=THREE.MathUtils.lerp(lim[0]*.65,lim[1]*.65,Math.random()));
+  setStatus("移動至隨機姿態", "#55d98d");
+};
+
+function setStatus(text,color){
+  document.getElementById("runStatus").textContent=text;
+  document.getElementById("statusDot").style.background=color;
+}
+function refreshUI(){
+  angles.forEach((a,i)=>{
+    sliders[i].value=a;
+    document.getElementById(`jv${i}`).textContent=a.toFixed(1)+"°";
+  });
+  if(!moving && !auto){
+    targetSlider.value=angles[selected]; targetInput.value=angles[selected];
+    targetLabel.textContent=angles[selected].toFixed(1)+"°";
+  }
+}
+
+// GPU detection
+const gl=renderer.getContext();
+document.getElementById("webglVersion").textContent = renderer.capabilities.isWebGL2 ? "WebGL 2" : "WebGL 1";
+const dbg=gl.getExtension("WEBGL_debug_renderer_info");
+const vendor=dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR);
+const gpu=dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+document.getElementById("gpuVendor").textContent=vendor;
+document.getElementById("gpuRenderer").textContent=gpu;
+if(/nvidia/i.test(gpu+" "+vendor)) setStatus("NVIDIA GPU 已啟用", "#55d98d");
+else setStatus("WebGL GPU 已啟用", "#ffd166");
+
+// Simple render-to-texture shader workload
+document.getElementById("gpuTestBtn").onclick=()=>{
+  const result=document.getElementById("gpuTestResult");
+  const size=1024;
+  const rt=new THREE.WebGLRenderTarget(size,size,{type:THREE.UnsignedByteType});
+  const s=new THREE.Scene();
+  const c=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+  const q=new THREE.Mesh(new THREE.PlaneGeometry(2,2),new THREE.ShaderMaterial({
+    vertexShader:`void main(){gl_Position=vec4(position,1.0);}`,
+    fragmentShader:`precision highp float;
+      void main(){
+        vec2 p=gl_FragCoord.xy/1024.0;
+        float v=0.0;
+        for(int i=0;i<120;i++){
+          v += sin(p.x*float(i+1))*cos(p.y*float(i+2));
+        }
+        gl_FragColor=vec4(fract(v),fract(v*.37),fract(v*.73),1.0);
+      }`
+  }));
+  s.add(q);
+  const t0=performance.now();
+  for(let i=0;i<30;i++){renderer.setRenderTarget(rt);renderer.render(s,c);}
+  gl.finish();
+  const ms=performance.now()-t0;
+  renderer.setRenderTarget(null); rt.dispose(); q.geometry.dispose(); q.material.dispose();
+  result.innerHTML=`完成 30 次 1024×1024 Shader 運算：<b>${ms.toFixed(1)} ms</b><br>平均：<b>${(ms/30).toFixed(2)} ms/frame</b>`;
+};
+
+let last=performance.now(), fpsTime=last, frames=0;
+const worldPos=new THREE.Vector3();
+
+function animate(now){
+  requestAnimationFrame(animate);
+  const dt=Math.min((now-last)/1000,.05); last=now;
+  const speed=Math.max(1,Number(speedInput.value)||35);
+
+  if(moving){
+    let done=true;
+    for(let i=0;i<6;i++){
+      const diff=targets[i]-angles[i];
+      if(Math.abs(diff)>.03){
+        angles[i]+=Math.sign(diff)*Math.min(Math.abs(diff),speed*dt);
+        done=false;
+      }else angles[i]=targets[i];
+    }
+    if(done){moving=false;setStatus("定位完成","#55d98d")}
+    applyAngles(); refreshUI();
+  }
+
+  if(auto){
+    const [lo,hi]=limits[selected];
+    const rangeLo=Math.max(lo,-90), rangeHi=Math.min(hi,90);
+    angles[selected]+=autoDir*speed*dt;
+    if(angles[selected]>=rangeHi){angles[selected]=rangeHi;autoDir=-1}
+    if(angles[selected]<=rangeLo){angles[selected]=rangeLo;autoDir=1}
+    applyAngles(); refreshUI();
+  }
+
+  tcp.getWorldPosition(worldPos);
+  document.getElementById("tcpX").textContent=worldPos.x.toFixed(3)+" m";
+  document.getElementById("tcpY").textContent=worldPos.y.toFixed(3)+" m";
+  document.getElementById("tcpZ").textContent=worldPos.z.toFixed(3)+" m";
+
+  controls.update(); renderer.render(scene,camera);
+  frames++;
+  if(now-fpsTime>500){
+    document.getElementById("fps").textContent=(frames*1000/(now-fpsTime)).toFixed(1);
+    frames=0;fpsTime=now;
+  }
+}
+requestAnimationFrame(animate);
+
+addEventListener("resize",()=>{
+  camera.aspect=wrap.clientWidth/wrap.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(wrap.clientWidth,wrap.clientHeight);
+});
+syncSelectedLimits();
+</script>
+</body>
+</html>
