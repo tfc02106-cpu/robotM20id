@@ -1,2163 +1,388 @@
 <!DOCTYPE html>
-<html lang="zh-Hant-TW">
+<html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FANUC M-20iD/25｜G-code、即時座標與地板防撞模擬</title>
-  <style>
-    :root {
-      --bg: #0e2038;
-      --panel: rgba(20, 43, 71, 0.92);
-      --panel-2: rgba(32, 61, 96, 0.88);
-      --line: rgba(163, 203, 245, 0.34);
-      --text: #eaf4ff;
-      --muted: #c1d5ea;
-      --accent: #75d15f;
-      --accent-2: #54b8ff;
-      --warning: #ffbd59;
-      --danger: #ff6868;
-      --shadow: 0 18px 50px rgba(0,0,0,.22);
-    }
-
-    * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; overflow: hidden; }
-    body {
-      font-family: Inter, "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
-      color: var(--text);
-      background:
-        radial-gradient(circle at 72% 14%, rgba(91, 188, 255, .42), transparent 34%),
-        radial-gradient(circle at 18% 20%, rgba(118, 255, 185, .18), transparent 30%),
-        linear-gradient(135deg, #0b1c31, #16375a 56%, #0d2340);
-    }
-
-    button, input, select { font: inherit; }
-    button { cursor: pointer; }
-
-    #app {
-      height: 100%;
-      display: grid;
-      grid-template-columns: 430px minmax(0, 1fr);
-    }
-
-    aside {
-      min-height: 0;
-      padding: 16px;
-      background: linear-gradient(180deg, rgba(15,34,56,.96), rgba(22,48,78,.93));
-      border-right: 1px solid var(--line);
-      overflow-y: auto;
-      box-shadow: var(--shadow);
-      z-index: 3;
-    }
-
-    main { position: relative; min-width: 0; min-height: 0; }
-    #viewport { position: absolute; inset: 0; }
-    canvas { display: block; }
-
-    .title-row { display: flex; align-items: center; gap: 11px; margin-bottom: 5px; }
-    .logo {
-      width: 38px; height: 38px; display: grid; place-items: center;
-      border-radius: 10px; font-weight: 900; color: #07111f;
-      background: linear-gradient(135deg, #85ee6a, #43a52f);
-      box-shadow: 0 0 24px rgba(117,209,95,.22);
-    }
-    h1 { font-size: 18px; margin: 0; letter-spacing: .4px; }
-    .subtitle { margin: 0 0 14px 49px; color: var(--muted); font-size: 12px; }
-
-    .card {
-      background: linear-gradient(180deg, var(--panel), var(--panel-2));
-      border: 1px solid var(--line);
-      border-radius: 13px;
-      padding: 13px;
-      margin-bottom: 12px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.15);
-    }
-    .card h2 {
-      margin: 0 0 11px; font-size: 13px; letter-spacing: .7px;
-      text-transform: uppercase; color: #d9ebff;
-    }
-
-    .status-line { display: flex; gap: 9px; align-items: flex-start; }
-    .status-dot {
-      width: 10px; height: 10px; margin-top: 4px; border-radius: 50%;
-      background: var(--warning); box-shadow: 0 0 12px currentColor; flex: 0 0 auto;
-    }
-    .status-dot.ok { background: var(--accent); }
-    .status-dot.bad { background: var(--danger); }
-    .status-main { font-weight: 700; font-size: 13px; line-height: 1.45; }
-    .status-sub { color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
-
-    label { display: block; color: var(--muted); font-size: 11px; margin: 9px 0 5px; }
-    select, input[type="number"] {
-      width: 100%; color: var(--text); background: #112641;
-      border: 1px solid rgba(125,164,205,.34); border-radius: 8px;
-      padding: 8px 9px; outline: none;
-    }
-    select:focus, input:focus { border-color: var(--accent-2); }
-
-    .range-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-    .range-value { color: #fff; font-weight: 800; font-variant-numeric: tabular-nums; }
-    input[type="range"] { width: 100%; accent-color: var(--accent-2); }
-
-    .joint-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
-    .joint-btn {
-      padding: 8px 4px; border-radius: 8px; border: 1px solid var(--line);
-      color: var(--muted); background: #112641; font-weight: 800;
-    }
-    .joint-btn.active {
-      color: #07111f; background: linear-gradient(135deg, #8eeaff, #54b8ff);
-      border-color: transparent;
-    }
-
-    .button-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; }
-    .button-row.three { grid-template-columns: repeat(3, 1fr); }
-    .btn {
-      border: 1px solid var(--line); border-radius: 8px; padding: 9px 8px;
-      color: var(--text); background: #15304f; font-weight: 750;
-    }
-    .btn:hover { filter: brightness(1.16); }
-    .btn.primary { background: linear-gradient(135deg, #2c87cc, #55b9ff); border: 0; color: #04111d; }
-    .btn.green { background: linear-gradient(135deg, #4da53c, #86e36d); border: 0; color: #07110a; }
-    .btn.danger { background: linear-gradient(135deg, #a43f48, #ff7474); border: 0; }
-
-    .direction { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .direction input { display: none; }
-    .direction label {
-      margin: 0; padding: 8px; text-align: center; border-radius: 8px;
-      background: #112641; border: 1px solid var(--line); color: var(--muted); cursor: pointer;
-    }
-    .direction input:checked + label {
-      color: #07111f; font-weight: 800; background: var(--accent-2); border-color: transparent;
-    }
-
-    .mode-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 11px; }
-    .mode-toggle input { display: none; }
-    .mode-toggle label {
-      margin: 0; padding: 8px; text-align: center; border-radius: 8px;
-      background: #112641; border: 1px solid var(--line); color: var(--muted); cursor: pointer;
-    }
-    .mode-toggle input:checked + label {
-      color: #07111f; font-weight: 800; background: linear-gradient(135deg, #83eeff, #69d28d);
-      border-color: transparent;
-    }
-    .dual-panel {
-      display: none; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--line);
-    }
-    .dual-panel.active { display: block; }
-    .axis-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .axis-chip {
-      margin-top: 8px; padding: 7px 9px; border-radius: 8px;
-      background: rgba(255, 190, 82, .13); border: 1px solid rgba(255, 190, 82, .38);
-      color: #ffe1a3; font-size: 11px; line-height: 1.45;
-    }
-
-    .data-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
-    .data-cell { background: rgba(16,36,59,.72); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
-    .data-cell span { display: block; color: var(--muted); font-size: 10px; }
-    .data-cell strong { display: block; margin-top: 3px; font-size: 13px; font-variant-numeric: tabular-nums; }
-
-    #benchmarkResult {
-      margin-top: 9px; min-height: 44px; color: var(--muted); font-size: 11px; line-height: 1.5;
-      padding: 8px; border-radius: 8px; background: rgba(18,38,61,.68); border: 1px solid var(--line);
-    }
-
-    .hud {
-      position: absolute; top: 14px; right: 14px; z-index: 2;
-      display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end;
-      pointer-events: none;
-    }
-    .hud-badge {
-      padding: 7px 10px; border-radius: 999px;
-      border: 1px solid var(--line); background: rgba(17,37,61,.8);
-      backdrop-filter: blur(8px); color: var(--muted); font-size: 11px;
-    }
-    .hud-badge strong { color: var(--text); }
-    .hud-coordinate-panel {
-      flex: 1 1 100%; min-width: 430px; max-width: 720px;
-      padding: 9px 11px; border-radius: 12px;
-      border: 1px solid rgba(139, 207, 255, .46);
-      background: rgba(10, 31, 54, .86); backdrop-filter: blur(10px);
-      box-shadow: 0 8px 28px rgba(0,0,0,.16);
-    }
-    .hud-coordinate-title {
-      display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px;
-      color: #dff5ff; font-size: 10.5px; font-weight: 800; letter-spacing: .25px;
-    }
-    .hud-coordinate-grid { display: grid; grid-template-columns: repeat(6, minmax(58px, 1fr)); gap: 6px; }
-    .hud-coordinate-item {
-      padding: 5px 6px; border-radius: 7px; text-align: center;
-      background: rgba(35, 76, 111, .66); border: 1px solid rgba(139, 207, 255, .22);
-      color: var(--muted); font-size: 9.5px;
-    }
-    .hud-coordinate-item strong { display: block; margin-top: 2px; color: #ffffff; font-size: 11px; font-variant-numeric: tabular-nums; }
-    .hud-collision { margin-top: 6px; padding: 5px 8px; border-radius: 7px; font-size: 10px; font-weight: 800; }
-    .hud-collision.safe { color: #dfffe5; background: rgba(33, 94, 50, .58); border: 1px solid rgba(117,209,95,.55); }
-    .hud-collision.warn { color: #fff1cb; background: rgba(111, 72, 18, .65); border: 1px solid rgba(255,189,89,.66); }
-    .hud-collision.collision { color: #ffe2e2; background: rgba(113, 28, 37, .74); border: 1px solid rgba(255,104,104,.8); }
-
-    .help {
-      position: absolute; bottom: 14px; right: 14px; z-index: 2;
-      background: rgba(17,37,61,.78); border: 1px solid var(--line); border-radius: 10px;
-      padding: 8px 10px; color: var(--muted); font-size: 11px; pointer-events: none;
-      backdrop-filter: blur(8px);
-    }
-
-    .spec-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
-    .spec-item { background: rgba(16,36,59,.72); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
-    .spec-item span { display: block; color: var(--muted); font-size: 10px; margin-bottom: 3px; }
-    .spec-item strong { display: block; color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; }
-    .axis-spec { margin-top: 8px; font-size: 10px; line-height: 1.55; color: var(--muted); }
-    .note { color: var(--muted); font-size: 10.5px; line-height: 1.5; margin: 8px 0 0; }
-    .warn { color: var(--warning); }
-    .limit-readout {
-      margin-top: 9px; padding: 8px 10px; border-radius: 9px;
-      background: rgba(32, 74, 112, .72); border: 1px solid rgba(124, 211, 255, .42);
-      color: #dff5ff; font-size: 11px; line-height: 1.5;
-    }
-    .limit-readout strong { color: #ffffff; }
-    .motion-status {
-      margin-top: 9px; padding: 8px 10px; border-radius: 9px;
-      background: rgba(18, 51, 78, .8); border: 1px solid var(--line);
-      color: var(--muted); font-size: 11px; line-height: 1.5;
-    }
-    .motion-status.running { color: #dfffe5; border-color: rgba(117, 209, 95, .62); background: rgba(34, 91, 51, .55); }
-    .motion-status.limit { color: #fff0d2; border-color: rgba(255, 189, 89, .8); background: rgba(113, 68, 16, .7); }
-    .motion-status.collision { color: #ffe2e2; border-color: rgba(255,104,104,.86); background: rgba(108,27,36,.76); }
-    .collision-safe-text { color: #bfffc8 !important; }
-    .collision-warn-text { color: #ffe29d !important; }
-    .collision-bad-text { color: #ffb6bd !important; }
-    .limit-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 9px;
-    }
-    .limit-cell {
-      padding: 7px 6px; border-radius: 8px; text-align: center;
-      background: rgba(16, 39, 65, .72); border: 1px solid var(--line);
-      font-size: 10px; color: var(--muted);
-    }
-    .limit-cell strong { display: block; margin-bottom: 2px; color: #ffffff; font-size: 11px; }
-
-
-    textarea { font: 12px/1.55 "Cascadia Code", Consolas, monospace; }
-    .gcode-editor {
-      width: 100%; min-height: 245px; resize: vertical; padding: 10px 11px;
-      color: #eaf7ff; background: #07182b; border: 1px solid rgba(134,196,255,.42);
-      border-radius: 9px; outline: none; tab-size: 2; white-space: pre;
-    }
-    .gcode-editor:focus { border-color: #7bdcff; box-shadow: 0 0 0 2px rgba(84,184,255,.12); }
-    .gcode-toolbar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 9px; }
-    .gcode-toolbar.two { grid-template-columns: repeat(2, 1fr); }
-    .gcode-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; }
-    .check-row { display: flex; align-items: center; gap: 7px; min-height: 36px; color: var(--muted); font-size: 11px; }
-    .check-row input { accent-color: var(--accent); }
-    .program-status {
-      margin-top: 9px; padding: 9px 10px; min-height: 56px; border-radius: 9px;
-      background: rgba(7,24,43,.82); border: 1px solid var(--line); color: var(--muted);
-      font-size: 11px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
-    }
-    .program-status.ok { border-color: rgba(117,209,95,.62); color: #e0ffe7; }
-    .program-status.running { border-color: rgba(84,184,255,.75); color: #def3ff; background: rgba(16,61,93,.70); }
-    .program-status.error { border-color: rgba(255,104,104,.8); color: #ffe2e2; background: rgba(96,26,34,.62); }
-    .program-status.pause { border-color: rgba(255,189,89,.8); color: #fff0cf; background: rgba(100,66,19,.62); }
-    .progress-shell { height: 8px; overflow: hidden; border-radius: 99px; margin-top: 9px; background: rgba(3,13,24,.65); border: 1px solid var(--line); }
-    .progress-bar { width: 0%; height: 100%; background: linear-gradient(90deg,#55b9ff,#75d15f); transition: width .08s linear; }
-    .syntax-box { margin-top: 9px; padding: 8px 9px; border-radius: 8px; background: rgba(15,36,59,.72); border: 1px solid var(--line); color: var(--muted); font-size: 10.5px; line-height: 1.55; }
-    .syntax-box code { color: #eaf7ff; }
-
-    @media (max-width: 840px) {
-      #app { grid-template-columns: 1fr; grid-template-rows: 48vh 52vh; }
-      aside { grid-row: 2; border-right: 0; border-top: 1px solid var(--line); }
-      main { grid-row: 1; }
-      .hud-coordinate-panel { min-width: min(430px, calc(100vw - 28px)); }
-      .hud-coordinate-grid { grid-template-columns: repeat(3, 1fr); }
-      .hud { left: 14px; right: 14px; }
-    }
-  </style>
-
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
-    }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>六軸機械手臂 GPU 運動模擬器</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#151d31; --panel2:#0f1729; --text:#e8eefc;
+    --muted:#9aa8c5; --accent:#62a8ff; --ok:#55d98d; --warn:#ffd166; --danger:#ff6b6b;
   }
-  </script>
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:linear-gradient(135deg,#07101e,#111a31);
+    color:var(--text); font-family:Arial,"Noto Sans TC",sans-serif; overflow:hidden;
+  }
+  #app{height:100vh;display:grid;grid-template-columns:360px 1fr}
+  #panel{
+    background:rgba(13,20,37,.96);border-right:1px solid #2b3652;
+    padding:16px;overflow:auto
+  }
+  h1{font-size:20px;margin:0 0 8px}
+  h2{font-size:14px;margin:18px 0 8px;color:#bcd4ff}
+  .note{font-size:12px;color:var(--muted);line-height:1.55}
+  .card{background:var(--panel);border:1px solid #26324e;border-radius:12px;padding:12px;margin-top:10px}
+  label{font-size:12px;color:#b8c5de}
+  select,input[type=number],button{
+    width:100%;border:1px solid #344260;border-radius:8px;background:#0b1325;
+    color:white;padding:9px
+  }
+  input[type=range]{width:100%}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .btnrow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px}
+  button{cursor:pointer;font-weight:700}
+  button.primary{background:#1769d2}
+  button.good{background:#157347}
+  button.stop{background:#9d2933}
+  .value{font-family:Consolas,monospace;color:#8fc4ff}
+  .joint{padding:8px;border-bottom:1px solid #25314b}
+  .joint:last-child{border-bottom:0}
+  .joint-head{display:flex;justify-content:space-between;font-size:12px}
+  #viewport{position:relative;min-width:0}
+  #canvasWrap{position:absolute;inset:0}
+  #hud{
+    position:absolute;top:14px;right:14px;width:300px;padding:12px;
+    background:rgba(5,10,20,.78);backdrop-filter:blur(8px);
+    border:1px solid #31405f;border-radius:12px;font-size:12px;line-height:1.6
+  }
+  #statusDot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--warn);margin-right:6px}
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  td{padding:3px;border-bottom:1px solid #25314b}
+  td:last-child{text-align:right;font-family:Consolas,monospace}
+  .legend{position:absolute;left:14px;bottom:14px;background:rgba(5,10,20,.72);padding:8px 10px;border-radius:8px;font-size:11px}
+  @media(max-width:900px){
+    #app{grid-template-columns:1fr;grid-template-rows:48vh 52vh}
+    #panel{border-right:0;border-bottom:1px solid #2b3652}
+    #hud{width:250px}
+  }
+</style>
 </head>
 <body>
 <div id="app">
-  <aside>
-    <div class="title-row">
-      <div class="logo">F</div>
-      <h1>FANUC M-20iD/25 運動與 G-code 模擬</h1>
+  <aside id="panel">
+    <h1>六軸機械手臂運動模擬器</h1>
+    <div class="note">
+      可指定 J1–J6 單軸運動、設定角度與速度，或執行自動往復。
+      畫面由 WebGL GPU 渲染；若瀏覽器實際使用 NVIDIA 顯卡，GPU 資訊區會顯示 NVIDIA。
     </div>
-    <p class="subtitle">關節空間路徑｜即時 TCP 座標｜地板防撞｜Three.js + WebGPU</p>
 
-    <section class="card">
-      <h2>機型名目規格</h2>
-      <div class="spec-grid">
-        <div class="spec-item"><span>機型</span><strong>M-20iD/25</strong></div>
-        <div class="spec-item"><span>最大負載</span><strong>25 kg</strong></div>
-        <div class="spec-item"><span>最大伸距</span><strong>1831 mm</strong></div>
-        <div class="spec-item"><span>重複精度</span><strong>±0.02 mm</strong></div>
-        <div class="spec-item"><span>機械重量</span><strong>250 kg</strong></div>
-        <div class="spec-item"><span>控制器</span><strong>R-30iB Plus</strong></div>
-      </div>
-      <div class="axis-spec">名目幾何：基座至 J2 軸 425 mm、J2–J3 840 mm、J3 後偏置 215 mm、主臂尺寸 890 mm。3D 外殼為視覺近似，不是原廠 CAD。</div>
-      <div class="limit-grid" aria-label="各軸模型軸限">
-        <div id="limitCell1" class="limit-cell"><strong>J1</strong>−170° ～ +170°</div>
-        <div id="limitCell2" class="limit-cell"><strong>J2</strong>−100° ～ +160°</div>
-        <div id="limitCell3" class="limit-cell"><strong>J3</strong>−190° ～ +268.5°</div>
-        <div id="limitCell4" class="limit-cell"><strong>J4</strong>−200° ～ +200°</div>
-        <div id="limitCell5" class="limit-cell"><strong>J5</strong>−180° ～ +180°</div>
-        <div id="limitCell6" class="limit-cell"><strong>J6</strong>−360° ～ +360°</div>
-      </div>
-      <label for="j6RangeMode">J6 模型行程設定</label>
-      <select id="j6RangeMode">
-        <option value="360" selected>保守模式：−360° ～ +360°（總行程 720°）</option>
-        <option value="450">延伸模式：−450° ～ +450°（總行程 900°）</option>
+    <div class="card">
+      <h2 style="margin-top:0">單軸控制</h2>
+      <label>選擇運動軸</label>
+      <select id="axisSelect">
+        <option value="0">J1－底座旋轉</option>
+        <option value="1">J2－肩部</option>
+        <option value="2">J3－肘部</option>
+        <option value="3">J4－腕部旋轉</option>
+        <option value="4">J5－腕部擺動</option>
+        <option value="5">J6－法蘭旋轉</option>
       </select>
-      <p class="note warn">J6 公開規格存在版本差異；連接實機前必須以該機器的機械單元手冊與控制器軸限設定為準。</p>
-    </section>
-
-    <section class="card">
-      <h2>GPU 狀態</h2>
-      <div class="status-line">
-        <div id="gpuDot" class="status-dot"></div>
+      <div style="height:10px"></div>
+      <div class="joint-head"><span>目標角度</span><span id="targetLabel" class="value">0.0°</span></div>
+      <input id="targetSlider" type="range" min="-170" max="170" step="0.1" value="0">
+      <div class="row">
         <div>
-          <div id="gpuMain" class="status-main">正在偵測 WebGPU…</div>
-          <div id="gpuSub" class="status-sub">要求 high-performance 顯示卡</div>
+          <label>目標角度（°）</label>
+          <input id="targetInput" type="number" min="-170" max="170" step="0.1" value="0">
         </div>
-      </div>
-      <div class="button-row">
-        <button id="gpuRetry" class="btn">重新偵測</button>
-        <button id="gpuBenchmark" class="btn green">GPU 運算測試</button>
-      </div>
-      <div id="benchmarkResult">尚未執行。測試會用 WGSL 計算大量六軸正向運動學姿態；目前動畫與 G-code 排程仍由 JavaScript CPU 執行，GPU 測試不等於伺服控制。</div>
-    </section>
-
-    <section class="card">
-      <h2>關節選擇</h2>
-      <div id="jointButtons" class="joint-grid"></div>
-
-      <div class="range-head">
-        <label id="jointAngleLabel" for="jointAngle">J1 角度</label>
-        <span id="jointAngleValue" class="range-value">0.0°</span>
-      </div>
-      <input id="jointAngle" type="range" min="-170" max="170" step="0.1" value="0" />
-      <div id="limitReadout" class="limit-readout"><strong>J1 模型軸限：</strong>−170° ～ +170°</div>
-
-      <div class="button-row three">
-        <button id="minusStep" class="btn">−1°</button>
-        <button id="zeroJoint" class="btn">歸零</button>
-        <button id="plusStep" class="btn">+1°</button>
-      </div>
-    </section>
-
-    <section class="card">
-      <h2>連續運動</h2>
-
-      <div class="mode-toggle">
-        <input id="modeSingle" type="radio" name="motionMode" value="single" checked />
-        <label for="modeSingle">單軸模式</label>
-        <input id="modeDual" type="radio" name="motionMode" value="dual" />
-        <label for="modeDual">雙軸同步</label>
-      </div>
-
-      <label>主軸方向（由上方 J1～J6 選擇）</label>
-      <div class="direction">
-        <input id="dirPositive" type="radio" name="direction" value="1" checked />
-        <label for="dirPositive">正向 +</label>
-        <input id="dirNegative" type="radio" name="direction" value="-1" />
-        <label for="dirNegative">反向 −</label>
-      </div>
-
-      <div class="range-head">
-        <label id="speedLabel" for="speed">主軸速度</label>
-        <span id="speedValue" class="range-value">20.0 °/s</span>
-      </div>
-      <input id="speed" type="range" min="1" max="210" step="1" value="20" />
-
-      <div id="dualPanel" class="dual-panel">
-        <div class="axis-row">
-          <div>
-            <label for="secondJoint">第二軸</label>
-            <select id="secondJoint">
-              <option value="1">J2</option>
-              <option value="2">J3</option>
-              <option value="3">J4</option>
-              <option value="4">J5</option>
-              <option value="5">J6</option>
-            </select>
-          </div>
-          <div>
-            <label for="secondDirection">第二軸方向</label>
-            <select id="secondDirection">
-              <option value="1">正向 +</option>
-              <option value="-1">反向 −</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="range-head">
-          <label id="secondSpeedLabel" for="secondSpeed">第二軸速度</label>
-          <span id="secondSpeedValue" class="range-value">20.0 °/s</span>
-        </div>
-        <input id="secondSpeed" type="range" min="1" max="210" step="1" value="20" />
-        <div id="dualSummary" class="axis-chip">主軸 J1 ＋ 第二軸 J2 將同時運動</div>
-      </div>
-
-      <div class="button-row">
-        <button id="startMotion" class="btn primary">啟動選定軸</button>
-        <button id="stopMotion" class="btn danger">停止</button>
-      </div>
-      <div id="motionStatus" class="motion-status">狀態：停止｜模型軸限與 20 mm 地板安全間隙保護已啟用。</div>
-    </section>
-
-    <section class="card">
-      <h2>G-code-like 連續路徑</h2>
-      <textarea id="gcodeEditor" class="gcode-editor" spellcheck="false" aria-label="G-code 程式編輯器">%
-O1000 (M-20iD/25 joint-space continuous demo)
-G90
-G64
-G1 J1=0 J2=-34 J3=72 J4=0 J5=-38 J6=0 F35
-G1 J1=20 J2=-44 J3=84 J4=20 J5=-46 J6=30 F40
-G1 J1=40 J2=-54 J3=96 J4=40 J5=-54 J6=60 F40
-G1 J1=60 J2=-64 J3=108 J4=60 J5=-62 J6=90 F40
-G1 J1=40 J2=-54 J3=96 J4=40 J5=-54 J6=60 F40
-G1 J1=20 J2=-44 J3=84 J4=20 J5=-46 J6=30 F40
-G1 J1=0 J2=-34 J3=72 J4=0 J5=-38 J6=0 F35
-M30
-%</textarea>
-
-      <div class="gcode-options">
         <div>
-          <div class="range-head">
-            <label for="programOverride">程式速度倍率</label>
-            <span id="programOverrideValue" class="range-value">30%</span>
-          </div>
-          <input id="programOverride" type="range" min="5" max="100" step="5" value="30" />
+          <label>速度（°/s）</label>
+          <input id="speedInput" type="number" min="1" max="180" step="1" value="35">
         </div>
-        <label class="check-row"><input id="gcodeLoop" type="checkbox" /> M30 後循環執行</label>
       </div>
+      <div style="height:9px"></div>
+      <div class="btnrow">
+        <button id="moveBtn" class="primary">移動</button>
+        <button id="autoBtn" class="good">往復</button>
+        <button id="stopBtn" class="stop">停止</button>
+      </div>
+    </div>
 
-      <div class="gcode-toolbar">
-        <button id="gcodeValidate" class="btn">檢查程式</button>
-        <button id="gcodeExample" class="btn">載入範例</button>
-        <button id="gcodeStart" class="btn green">開始／續跑</button>
+    <div class="card">
+      <h2 style="margin-top:0">六軸即時角度</h2>
+      <div id="jointControls"></div>
+      <div class="row" style="margin-top:10px">
+        <button id="homeBtn">回原點</button>
+        <button id="randomBtn">隨機姿態</button>
       </div>
-      <div class="gcode-toolbar">
-        <button id="gcodePause" class="btn">暫停</button>
-        <button id="gcodeStep" class="btn primary">單段執行</button>
-        <button id="gcodeStop" class="btn danger">停止程式</button>
-      </div>
-      <div class="progress-shell"><div id="gcodeProgress" class="progress-bar"></div></div>
-      <div id="gcodeStatus" class="program-status">尚未檢查程式。
-此語法只供瀏覽器模擬，不可直接上傳至 FANUC 控制器。</div>
-      <div class="syntax-box">
-        支援：<code>G90/G91</code> 絕對／增量、<code>G0/G1</code> 協調關節運動、<code>G4 P毫秒</code>、<code>G61</code> 精確停止、<code>G64</code> 連續模式、<code>M0</code> 暫停、<code>M2/M30</code> 結束、<code>M99</code> 迴圈。<br>
-        關節格式：<code>J1=角度 ... J6=角度 F速度</code>；角度單位為 degree，F 為 degree/s。程式檢查與執行期間均會套用 20 mm 地板安全間隙。X/Y/Z Cartesian 指令尚未開放，避免沒有 IK、姿態組態與奇異點檢查時產生錯誤路徑。
-      </div>
-    </section>
+    </div>
 
-    <section class="card">
-      <h2>模型參考姿態</h2>
-      <div class="button-row three">
-        <button class="btn preset" data-preset="home">參考姿態</button>
-        <button class="btn preset" data-preset="inspect">檢測</button>
-        <button class="btn preset" data-preset="fold">收折</button>
-      </div>
-      <div class="button-row">
-        <button id="resetAll" class="btn">模型六軸零位</button>
-        <button id="toggleTrail" class="btn">開啟軌跡</button>
-      </div>
-    </section>
-
-    <section class="card">
-      <h2>TCP 即時座標與地板防撞</h2>
-      <div class="data-grid">
-        <div class="data-cell"><span>X BASE</span><strong id="posX">0.0 mm</strong></div>
-        <div class="data-cell"><span>Y BASE</span><strong id="posY">0.0 mm</strong></div>
-        <div class="data-cell"><span>Z BASE（向上）</span><strong id="posZ">0.0 mm</strong></div>
-        <div class="data-cell"><span>RX 模型</span><strong id="rotX">0.0°</strong></div>
-        <div class="data-cell"><span>RY 模型</span><strong id="rotY">0.0°</strong></div>
-        <div class="data-cell"><span>RZ 模型</span><strong id="rotZ">0.0°</strong></div>
-        <div class="data-cell"><span>TCP 離地高度</span><strong id="tcpClearance">0.0 mm</strong></div>
-        <div class="data-cell"><span>機構最低離地</span><strong id="minClearance">0.0 mm</strong></div>
-        <div class="data-cell"><span>地板防撞狀態</span><strong id="collisionState">檢查中</strong></div>
-      </div>
-      <p class="note">BASE 模型座標原點設於基座中心的地板安裝面，X 向右、Y 為水平深度、Z 向上；由 Three.js 世界座標換算為 X=Xworld、Y=−Zworld、Z=Yworld。RX/RY/RZ 是模型 XYZ Euler 角，不等同 FANUC W/P/R。地板防撞以簡化外殼的包圍盒估算，保留 20 mm 安全間隙；仍未取代原廠 CAD、ROBOGUIDE、DCS、自碰撞與治具干涉驗證。</p>
-    </section>
+    <div class="card">
+      <h2 style="margin-top:0">GPU 運算</h2>
+      <button id="gpuTestBtn">執行 GPU Shader 測試</button>
+      <div id="gpuTestResult" class="note" style="margin-top:8px">尚未執行。</div>
+    </div>
   </aside>
 
-  <main>
-    <div id="viewport"></div>
-    <div class="hud">
-      <div class="hud-badge">M-20iD/25｜運動軸：<strong id="hudJoint">J1</strong></div>
-      <div class="hud-badge">角度：<strong id="hudAngle">0.0°</strong></div>
-      <div class="hud-badge">程式：<strong id="hudProgram">待命</strong></div>
-      <div class="hud-badge">FPS：<strong id="fps">--</strong></div>
-      <div class="hud-coordinate-panel">
-        <div class="hud-coordinate-title"><span>TCP 即時座標｜BASE 模型座標</span><span>位置 mm｜姿態 deg</span></div>
-        <div class="hud-coordinate-grid">
-          <div class="hud-coordinate-item">X<strong id="hudTcpX">0.0</strong></div>
-          <div class="hud-coordinate-item">Y<strong id="hudTcpY">0.0</strong></div>
-          <div class="hud-coordinate-item">Z<strong id="hudTcpZ">0.0</strong></div>
-          <div class="hud-coordinate-item">RX<strong id="hudRotX">0.0</strong></div>
-          <div class="hud-coordinate-item">RY<strong id="hudRotY">0.0</strong></div>
-          <div class="hud-coordinate-item">RZ<strong id="hudRotZ">0.0</strong></div>
-        </div>
-        <div id="hudCollision" class="hud-collision safe">地板防撞：檢查中</div>
-      </div>
+  <main id="viewport">
+    <div id="canvasWrap"></div>
+    <div id="hud">
+      <div><span id="statusDot"></span><b id="runStatus">待機</b></div>
+      <table>
+        <tr><td>WebGL</td><td id="webglVersion">—</td></tr>
+        <tr><td>GPU Vendor</td><td id="gpuVendor">—</td></tr>
+        <tr><td>GPU Renderer</td><td id="gpuRenderer">—</td></tr>
+        <tr><td>FPS</td><td id="fps">—</td></tr>
+        <tr><td>末端 X</td><td id="tcpX">—</td></tr>
+        <tr><td>末端 Y</td><td id="tcpY">—</td></tr>
+        <tr><td>末端 Z</td><td id="tcpZ">—</td></tr>
+      </table>
     </div>
-    <div class="help">模擬器自訂 G-code-like 語法｜非 FANUC TP/LS｜左鍵旋轉｜滾輪縮放｜右鍵平移</div>
+    <div class="legend">滑鼠左鍵旋轉視角｜滾輪縮放｜右鍵平移</div>
   </main>
 </div>
 
 <script type="module">
-  import * as THREE from 'three';
-  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js";
+import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/controls/OrbitControls.js";
 
-  const $ = (id) => document.getElementById(id);
-  const viewport = $('viewport');
+const wrap = document.getElementById("canvasWrap");
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x09111f);
 
-  // ------------------------------
-  // 3D 場景
-  // ------------------------------
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x12365b);
-  scene.fog = new THREE.Fog(0x12365b, 7, 15);
+const camera = new THREE.PerspectiveCamera(45, wrap.clientWidth / wrap.clientHeight, 0.1, 100);
+camera.position.set(5.6, 4.2, 6.2);
 
-  const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 100);
-  camera.position.set(3.7, 2.75, 4.6);
+const renderer = new THREE.WebGLRenderer({antialias:true, powerPreference:"high-performance"});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(wrap.clientWidth, wrap.clientHeight);
+renderer.shadowMap.enabled = true;
+wrap.appendChild(renderer.domElement);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.28;
-  viewport.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.7, 0);
+controls.enableDamping = true;
 
-  const controls = new OrbitControls(camera, renderer.domElement);
-  controls.target.set(0.15, 1.18, 0);
-  controls.enableDamping = true;
-  controls.minDistance = 1.8;
-  controls.maxDistance = 9;
-  controls.maxPolarAngle = Math.PI * 0.49;
+scene.add(new THREE.HemisphereLight(0xbfd8ff,0x182033,1.8));
+const sun = new THREE.DirectionalLight(0xffffff,2.6);
+sun.position.set(4,7,4); sun.castShadow=true; scene.add(sun);
 
-  scene.add(new THREE.HemisphereLight(0xcdeaff, 0x35516d, 2.2));
-  scene.add(new THREE.AmbientLight(0xa8d8ff, 0.6));
-  const keyLight = new THREE.DirectionalLight(0xffffff, 4.0);
-  keyLight.position.set(4, 7, 3);
-  keyLight.castShadow = true;
-  keyLight.shadow.mapSize.set(2048, 2048);
-  keyLight.shadow.camera.left = -5;
-  keyLight.shadow.camera.right = 5;
-  keyLight.shadow.camera.top = 5;
-  keyLight.shadow.camera.bottom = -5;
-  scene.add(keyLight);
+const grid = new THREE.GridHelper(12,24,0x46628f,0x24324d);
+scene.add(grid);
+const axes = new THREE.AxesHelper(1.2); scene.add(axes);
 
-  const rimLight = new THREE.DirectionalLight(0x72d0ff, 2.35);
-  rimLight.position.set(-4, 3, -5);
-  scene.add(rimLight);
+const floor = new THREE.Mesh(
+  new THREE.CircleGeometry(5.5,64),
+  new THREE.MeshStandardMaterial({color:0x101a2c,roughness:.85,metalness:.05})
+);
+floor.rotation.x=-Math.PI/2; floor.position.y=-.015; floor.receiveShadow=true; scene.add(floor);
 
-  const floor = new THREE.Mesh(
-    new THREE.CircleGeometry(5.2, 96),
-    new THREE.MeshStandardMaterial({ color: 0x1e4468, roughness: 0.82, metalness: 0.12 })
-  );
-  floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
-  scene.add(floor);
+const matBody = new THREE.MeshStandardMaterial({color:0xd9e2f0,metalness:.45,roughness:.32});
+const matJoint = new THREE.MeshStandardMaterial({color:0x267de3,metalness:.5,roughness:.25});
+const matDark = new THREE.MeshStandardMaterial({color:0x17233a,metalness:.6,roughness:.28});
+const matEnd = new THREE.MeshStandardMaterial({color:0xffb347,metalness:.4,roughness:.3});
 
-  const grid = new THREE.GridHelper(9, 18, 0x79d8ff, 0x2d5f84);
-  grid.position.y = 0.003;
-  scene.add(grid);
+function cyl(r, h, mat, axis="y"){
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,36),mat);
+  if(axis==="x") m.rotation.z=Math.PI/2;
+  if(axis==="z") m.rotation.x=Math.PI/2;
+  m.castShadow=true; m.receiveShadow=true; return m;
+}
+function box(x,y,z,mat){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(x,y,z),mat);
+  m.castShadow=true; m.receiveShadow=true; return m;
+}
 
-  const axes = new THREE.AxesHelper(0.8);
-  axes.position.set(-2.8, 0.02, -2.8);
-  scene.add(axes);
+// Hierarchical six-axis robot
+const base = new THREE.Group(); scene.add(base);
+const pedestal = cyl(.72,.35,matDark); pedestal.position.y=.175; base.add(pedestal);
 
-  // ------------------------------
-  // FANUC M-20iD/25 簡化階層模型
-  // 名目尺寸採 m：425 / 840 / 215 / 890 / 90 mm
-  // ------------------------------
-  const C = {
-    fanucYellow: 0xffd21f,
-    fanucYellowDark: 0xd6aa00,
-    black: 0x101318,
-    blackSoft: 0x252b33,
-    metal: 0x89939e,
-    selected: 0x38bdf8,
-    secondary: 0x64e572,
-    tool: 0x20262d
-  };
+const J1 = new THREE.Group(); J1.position.y=.35; base.add(J1);
+const shoulderBase=cyl(.55,.55,matJoint); shoulderBase.position.y=.275; J1.add(shoulderBase);
 
-  const matBody = new THREE.MeshStandardMaterial({ color: C.fanucYellow, roughness: .42, metalness: .28 });
-  const matBodyDark = new THREE.MeshStandardMaterial({ color: C.fanucYellowDark, roughness: .48, metalness: .30 });
-  const matJoint = new THREE.MeshStandardMaterial({ color: C.black, roughness: .30, metalness: .68 });
-  const matBlackSoft = new THREE.MeshStandardMaterial({ color: C.blackSoft, roughness: .38, metalness: .48 });
-  const matMetal = new THREE.MeshStandardMaterial({ color: C.metal, roughness: .28, metalness: .78 });
-  const matTool = new THREE.MeshStandardMaterial({ color: C.tool, roughness: .28, metalness: .72 });
-  const matSelected = new THREE.MeshStandardMaterial({ color: C.selected, emissive: 0x083e5c, roughness: .24, metalness: .55 });
-  const matSecondary = new THREE.MeshStandardMaterial({ color: C.secondary, emissive: 0x123b18, roughness: .25, metalness: .48 });
-  const matCable = new THREE.MeshStandardMaterial({ color: 0x080a0d, roughness: .65, metalness: .08 });
+const J2 = new THREE.Group(); J2.position.set(0,.55,0); J1.add(J2);
+const shoulder=cyl(.42,.55,matDark,"z"); J2.add(shoulder);
+const link1=box(.52,1.7,.52,matBody); link1.position.y=.9; J2.add(link1);
 
-  function mesh(geometry, material, parent, position = [0,0,0], rotation = [0,0,0]) {
-    const m = new THREE.Mesh(geometry, material);
-    m.position.set(...position);
-    m.rotation.set(...rotation);
-    m.castShadow = true;
-    m.receiveShadow = true;
-    parent.add(m);
-    return m;
-  }
+const J3 = new THREE.Group(); J3.position.set(0,1.75,0); J2.add(J3);
+const elbow=cyl(.38,.58,matJoint,"z"); J3.add(elbow);
+const link2=box(.42,1.45,.42,matBody); link2.position.y=.78; J3.add(link2);
 
-  function cylinder(radius, length, material, parent, axis = 'y', position = [0,0,0]) {
-    const rot = axis === 'x' ? [0,0,Math.PI/2] : axis === 'z' ? [Math.PI/2,0,0] : [0,0,0];
-    return mesh(new THREE.CylinderGeometry(radius, radius, length, 48), material, parent, position, rot);
-  }
+const J4 = new THREE.Group(); J4.position.set(0,1.5,0); J3.add(J4);
+const wrist1=cyl(.3,.5,matDark,"y"); wrist1.position.y=.18; J4.add(wrist1);
 
-  function taperedCylinder(r1, r2, length, material, parent, axis='y', position=[0,0,0]) {
-    const rot = axis === 'x' ? [0,0,Math.PI/2] : axis === 'z' ? [Math.PI/2,0,0] : [0,0,0];
-    return mesh(new THREE.CylinderGeometry(r1, r2, length, 48), material, parent, position, rot);
-  }
+const J5 = new THREE.Group(); J5.position.set(0,.42,0); J4.add(J5);
+const wrist2=cyl(.27,.48,matJoint,"z"); J5.add(wrist2);
+const shortLink=box(.3,.55,.3,matBody); shortLink.position.y=.34; J5.add(shortLink);
 
-  function linkBetween(start, end, radius, material, parent) {
-    const a = new THREE.Vector3(...start);
-    const b = new THREE.Vector3(...end);
-    const dir = b.clone().sub(a);
-    const length = dir.length();
-    const g = new THREE.CapsuleGeometry(radius, Math.max(.01, length - 2 * radius), 10, 24);
-    const m = new THREE.Mesh(g, material);
-    m.position.copy(a.clone().add(b).multiplyScalar(.5));
-    m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.normalize());
-    m.castShadow = true;
-    m.receiveShadow = true;
-    parent.add(m);
-    return m;
-  }
+const J6 = new THREE.Group(); J6.position.set(0,.66,0); J5.add(J6);
+const flange=cyl(.24,.25,matEnd,"y"); flange.position.y=.12; J6.add(flange);
+const tool=box(.13,.5,.13,matEnd); tool.position.y=.46; J6.add(tool);
+const tcp = new THREE.Object3D(); tcp.position.y=.76; J6.add(tcp);
 
-  function curvedArmGeometry() {
-    const s = new THREE.Shape();
-    s.moveTo(-.17, -.02);
-    s.bezierCurveTo(-.22, .23, -.20, .60, -.10, .84);
-    s.lineTo(.15, .84);
-    s.bezierCurveTo(.25, .54, .25, .19, .18, -.02);
-    s.closePath();
-    const g = new THREE.ExtrudeGeometry(s, {
-      depth: .31,
-      bevelEnabled: true,
-      bevelSegments: 4,
-      steps: 1,
-      bevelSize: .025,
-      bevelThickness: .025,
-      curveSegments: 18
-    });
-    g.translate(0, 0, -.155);
-    return g;
-  }
+const joints=[J1,J2,J3,J4,J5,J6];
+const limits=[
+  [-170,170],[-110,120],[-150,150],[-180,180],[-120,120],[-360,360]
+];
+const axesRot=["y","z","z","y","z","y"];
+const angles=[0,-25,55,0,35,0];
+const targets=[...angles];
+let selected=0, moving=false, auto=false, autoDir=1;
 
-  function makeTextPlane(lines, width, height, parent, position, rotation=[0,0,0]) {
-    const canvas = document.createElement('canvas');
-    canvas.width = 512; canvas.height = 256;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#12161c';
-    ctx.fillRect(0,0,canvas.width,canvas.height);
-    ctx.strokeStyle = '#ffd21f'; ctx.lineWidth = 10;
-    ctx.strokeRect(8,8,canvas.width-16,canvas.height-16);
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#ffd21f'; ctx.font = '900 62px Arial';
-    ctx.fillText(lines[0], canvas.width/2, 88);
-    ctx.fillStyle = '#ffffff'; ctx.font = '700 47px Arial';
-    ctx.fillText(lines[1], canvas.width/2, 170);
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: false, side: THREE.DoubleSide });
-    const label = mesh(new THREE.PlaneGeometry(width,height), mat, parent, position, rotation);
-    label.userData.ignoreFloorCollision = true;
-    return label;
-  }
+function applyAngles(){
+  joints.forEach((j,i)=>j.rotation[axesRot[i]]=THREE.MathUtils.degToRad(angles[i]));
+}
+applyAngles();
 
-  const robotRoot = new THREE.Group();
-  scene.add(robotRoot);
-
-  // 黑色固定座與黃色 J1 基座
-  mesh(new THREE.BoxGeometry(.72,.11,.72), matJoint, robotRoot, [0,.055,0]);
-  mesh(new THREE.CylinderGeometry(.36,.42,.22,64), matJoint, robotRoot, [0,.20,0]);
-  taperedCylinder(.33,.30,.29,matBody,robotRoot,'y',[0,.405,0]);
-  mesh(new THREE.TorusGeometry(.305,.026,16,64), matJoint, robotRoot, [0,.555,0], [Math.PI/2,0,0]);
-
-  const joints = [];
-  const jointVisuals = [];
-
-  // J1：垂直軸
-  const j1 = new THREE.Group();
-  j1.position.set(0,.36,0); robotRoot.add(j1); joints.push(j1);
-  jointVisuals.push(cylinder(.285,.18,matJoint,j1,'y',[0,.08,0]));
-  mesh(new THREE.SphereGeometry(.34,40,24,0,Math.PI*2,0,Math.PI*.65), matBody, j1, [0,.20,0]);
-
-  // J2：肩部軸，世界高度約 425 mm
-  const j2 = new THREE.Group();
-  j2.position.set(0,.065,0); j1.add(j2); joints.push(j2);
-  jointVisuals.push(cylinder(.29,.55,matJoint,j2,'x',[0,0,0]));
-  taperedCylinder(.32,.27,.43,matBody,j2,'x',[0,0,0]);
-  mesh(curvedArmGeometry(), matBody, j2, [0,0,0]);
-  // 背部馬達外殼
-  taperedCylinder(.19,.15,.27,matBodyDark,j2,'x',[-.03,.08,-.34]);
-
-  // J2-J3 名目 840 mm
-  const j3 = new THREE.Group();
-  j3.position.set(0,.840,0); j2.add(j3); joints.push(j3);
-  jointVisuals.push(cylinder(.265,.50,matJoint,j3,'x',[0,0,0]));
-  taperedCylinder(.30,.25,.40,matBody,j3,'x',[0,0,0]);
-
-  // J3 至腕部：偏置 215 mm、連桿 890 mm
-  const wristOffset = new THREE.Vector3(.215,.890,0);
-  linkBetween([0,.04,0],[wristOffset.x,wristOffset.y-.06,0],.175,matBody,j3);
-  // 黃色稜線外殼，增加與照片相似的多面感
-  linkBetween([-.015,.08,.01],[wristOffset.x-.02,wristOffset.y-.11,.01],.125,matBodyDark,j3);
-  const linkAngle = -Math.atan2(wristOffset.x, wristOffset.y);
-  makeTextPlane(['FANUC','M-20iD/25'],.22,.48,j3,[.125,.48,.181],[0,0,linkAngle]);
-
-  // 外露黑色電纜束（照片背側特徵）
-  const cableCurve1 = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(-.20,.03,.23), new THREE.Vector3(-.24,.28,.24),
-    new THREE.Vector3(-.18,.58,.24), new THREE.Vector3(.02,.82,.24),
-    new THREE.Vector3(.20,.90,.22)
-  ]);
-  const cableCurve2 = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(-.16,.01,.27), new THREE.Vector3(-.20,.30,.28),
-    new THREE.Vector3(-.12,.61,.28), new THREE.Vector3(.09,.84,.27),
-    new THREE.Vector3(.23,.88,.25)
-  ]);
-  mesh(new THREE.TubeGeometry(cableCurve1,64,.020,10,false),matCable,j3);
-  mesh(new THREE.TubeGeometry(cableCurve2,64,.014,10,false),matCable,j3);
-
-  // J4：腕部旋轉軸
-  const j4 = new THREE.Group();
-  j4.position.copy(wristOffset); j3.add(j4); joints.push(j4);
-  jointVisuals.push(cylinder(.205,.34,matJoint,j4,'y',[0,0,0]));
-  taperedCylinder(.23,.19,.30,matBody,j4,'y',[0,.03,0]);
-
-  // J5：擺動軸
-  const j5 = new THREE.Group();
-  j5.position.set(0,.04,0); j4.add(j5); joints.push(j5);
-  jointVisuals.push(cylinder(.19,.40,matJoint,j5,'x',[0,0,0]));
-  mesh(new THREE.SphereGeometry(.215,40,28),matBlackSoft,j5,[0,.075,0]);
-
-  // J6：工具法蘭旋轉軸，法蘭名目段約 90 mm
-  const j6 = new THREE.Group();
-  j6.position.set(0,.03,0); j5.add(j6); joints.push(j6);
-  jointVisuals.push(cylinder(.145,.24,matJoint,j6,'y',[0,.02,0]));
-  cylinder(.13,.055,matMetal,j6,'y',[0,.075,0]);
-
-  // 簡化夾爪（不計入 1831 mm 原廠法蘭伸距）
-  const tool = new THREE.Group();
-  tool.position.set(0,.09,0); j6.add(tool);
-  cylinder(.085,.18,matTool,tool,'y',[0,.04,0]);
-  mesh(new THREE.BoxGeometry(.31,.07,.15),matTool,tool,[0,.15,0]);
-  mesh(new THREE.BoxGeometry(.065,.24,.065),matTool,tool,[-.115,.28,0]);
-  mesh(new THREE.BoxGeometry(.065,.24,.065),matTool,tool,[.115,.28,0]);
-
-  const tcp = new THREE.Object3D();
-  tcp.position.set(0,.43,0);
-  tool.add(tcp);
-
-  const tcpMarker = new THREE.Mesh(
-    new THREE.SphereGeometry(.045,24,16),
-    new THREE.MeshBasicMaterial({ color: 0xff4d67 })
-  );
-  tcp.add(tcpMarker);
-  tcpMarker.userData.ignoreFloorCollision = true;
-
-  // ------------------------------
-  // 地板碰撞近似檢查
-  // ------------------------------
-  const FLOOR_LEVEL_Y = 0;
-  const FLOOR_SAFETY_MARGIN = 0.020; // 20 mm，保守軟體間隙
-  const FLOOR_WARNING_MARGIN = 0.080;
-  const collisionMeshes = [];
-  const collisionBox = new THREE.Box3();
-  const baseFromWorldRotation = new THREE.Matrix4().set(
-    1, 0, 0, 0,
-    0, 0,-1, 0,
-    0, 1, 0, 0,
-    0, 0, 0, 1
-  );
-
-  function isUnderObject(object, ancestor) {
-    for (let node = object; node; node = node.parent) if (node === ancestor) return true;
-    return false;
-  }
-
-  function floorCollisionPartName(object) {
-    if (isUnderObject(object, tool)) return '工具／夾爪';
-    if (isUnderObject(object, j6)) return 'J6 法蘭';
-    if (isUnderObject(object, j5)) return 'J5 腕部';
-    if (isUnderObject(object, j4)) return 'J4 腕部';
-    if (isUnderObject(object, j3)) return 'J3 主臂';
-    if (isUnderObject(object, j2)) return 'J2 大臂';
-    return 'J1 上部';
-  }
-
-  j1.traverse(object => {
-    if (!object.isMesh || object.userData.ignoreFloorCollision || object.geometry?.type === 'TubeGeometry') return;
-    if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
-    object.userData.floorPartName = floorCollisionPartName(object);
-    collisionMeshes.push(object);
+const controlsDiv=document.getElementById("jointControls");
+const sliders=[];
+for(let i=0;i<6;i++){
+  const d=document.createElement("div"); d.className="joint";
+  d.innerHTML=`<div class="joint-head"><span>J${i+1}</span><span id="jv${i}" class="value">${angles[i].toFixed(1)}°</span></div>
+  <input id="js${i}" type="range" min="${limits[i][0]}" max="${limits[i][1]}" step="0.1" value="${angles[i]}">`;
+  controlsDiv.appendChild(d);
+  const s=d.querySelector("input"); sliders.push(s);
+  s.addEventListener("input",()=>{
+    angles[i]=Number(s.value); targets[i]=angles[i]; moving=false; auto=false;
+    applyAngles(); refreshUI();
   });
-
-  function readFloorState() {
-    scene.updateMatrixWorld(true);
-    let minY = Infinity;
-    let lowestObject = null;
-    for (const object of collisionMeshes) {
-      if (!object.visible || !object.geometry?.boundingBox) continue;
-      collisionBox.copy(object.geometry.boundingBox).applyMatrix4(object.matrixWorld);
-      if (collisionBox.min.y < minY) {
-        minY = collisionBox.min.y;
-        lowestObject = object;
-      }
-    }
-    const tcpWorld = new THREE.Vector3();
-    tcp.getWorldPosition(tcpWorld);
-    const clearance = minY - FLOOR_LEVEL_Y;
-    return {
-      minY, clearance, tcpClearance: tcpWorld.y - FLOOR_LEVEL_Y,
-      collision: clearance < FLOOR_SAFETY_MARGIN - 1e-7,
-      contact: clearance < 0,
-      warning: clearance < FLOOR_WARNING_MARGIN,
-      part: lowestObject?.userData.floorPartName || '未知部位'
-    };
-  }
-
-  function setPoseArray(pose) {
-    for (let i = 0; i < 6; i++) q[i] = pose[i];
-    applyJointRotations();
-    scene.updateMatrixWorld(true);
-  }
-
-  function evaluateFloorAtPose(pose) {
-    const saved = q.slice();
-    setPoseArray(pose);
-    const state = readFloorState();
-    setPoseArray(saved);
-    return state;
-  }
-
-  function movePoseWithFloorGuard(startPose, targetPose, iterations = 16) {
-    setPoseArray(startPose);
-    const startState = readFloorState();
-    setPoseArray(targetPose);
-    const targetState = readFloorState();
-
-    // 若目前已處於警戒區，允許朝增加間隙的方向退出。
-    if (!targetState.collision || (startState.collision && targetState.clearance > startState.clearance + 1e-6)) {
-      return { blocked: false, state: targetState, fraction: 1 };
-    }
-
-    let low = 0;
-    let high = 1;
-    let safeState = startState;
-    for (let n = 0; n < iterations; n++) {
-      const fraction = (low + high) / 2;
-      const candidate = startPose.map((value, i) => value + (targetPose[i] - value) * fraction);
-      setPoseArray(candidate);
-      const state = readFloorState();
-      if (state.collision) high = fraction;
-      else { low = fraction; safeState = state; }
-    }
-    const safePose = startPose.map((value, i) => value + (targetPose[i] - value) * low);
-    setPoseArray(safePose);
-    return { blocked: true, state: targetState, safeState, fraction: low, pose: safePose };
-  }
-
-  function updateFloorReadout(state) {
-    const clearanceMm = state.clearance * 1000;
-    const tcpMm = state.tcpClearance * 1000;
-    $('tcpClearance').textContent = `${tcpMm.toFixed(1)} mm`;
-    $('minClearance').textContent = `${clearanceMm.toFixed(1)} mm`;
-    const collisionText = state.contact ? '已穿透地板' : state.collision ? '安全間隙不足' : state.warning ? '接近地板' : '安全';
-    const cssClass = state.collision ? 'collision-bad-text' : state.warning ? 'collision-warn-text' : 'collision-safe-text';
-    $('collisionState').className = cssClass;
-    $('collisionState').textContent = collisionText;
-    const hud = $('hudCollision');
-    hud.className = `hud-collision ${state.collision ? 'collision' : state.warning ? 'warn' : 'safe'}`;
-    hud.textContent = `地板防撞：${collisionText}｜最低 ${clearanceMm.toFixed(1)} mm｜${state.part}`;
-    floor.material.emissive.setHex(state.collision ? 0x5b111b : state.warning ? 0x4a3108 : 0x000000);
-    floor.material.emissiveIntensity = state.collision ? 0.85 : state.warning ? 0.40 : 0;
-  }
-
-  // 1831 mm 名目伸距參考圈
-  const reachRing = new THREE.Mesh(
-    new THREE.TorusGeometry(1.831,.010,8,160),
-    new THREE.MeshBasicMaterial({ color: 0x7ce3ff, transparent:true, opacity:.48 })
-  );
-  reachRing.rotation.x = Math.PI/2;
-  reachRing.position.y = .425;
-  reachRing.visible = false; // R1831 是工作範圍尺度，不是地面上的完整圓；避免誤導，預設隱藏。
-  scene.add(reachRing);
-
-  // 關節旋轉軸：J1-Y, J2-Z, J3-Z, J4-Y, J5-Z, J6-Y
-  const axisDefs = ['y','z','z','y','z','y'];
-  // 名目軸行程。J6 官方公開資料有 720°與 900°兩種版本，預設採較保守的 ±360°，可由介面切換。
-  const limits = [
-    [-170,170], [-100,160], [-190,268.5], [-200,200], [-180,180], [-360,360]
-  ];
-  const maxSpeeds = [210,210,265,420,420,720];
-  const q = [0, -34, 72, 0, -38, 0];
-  let selectedJoint = 0;
-  let isMoving = false;
-  let motionMode = 'single';
-  let direction = 1;
-  let motionSpeed = 20;
-  let secondJoint = 1;
-  let secondDirection = 1;
-  let secondSpeed = 20;
-  let trailEnabled = false;
-
-  const trailMax = 500;
-  const trailPositions = new Float32Array(trailMax * 3);
-  let trailCount = 0;
-  const trailGeometry = new THREE.BufferGeometry();
-  trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
-  trailGeometry.setDrawRange(0, 0);
-  const trailLine = new THREE.Line(
-    trailGeometry,
-    new THREE.LineBasicMaterial({ color: 0xffd55f, transparent: true, opacity: .8 })
-  );
-  scene.add(trailLine);
-
-  function clampJoint(index, angle) {
-    return THREE.MathUtils.clamp(angle, limits[index][0], limits[index][1]);
-  }
-
-  function formatLimit(value) {
-    const digits = Number.isInteger(value) ? 0 : 1;
-    return `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(digits)}°`;
-  }
-
-  function setMotionStatus(message, kind = '') {
-    const el = $('motionStatus');
-    if (!el) return;
-    el.className = `motion-status${kind ? ` ${kind}` : ''}`;
-    el.textContent = message;
-  }
-
-  function atDirectionalLimit(index, dir, tolerance = 1e-6) {
-    const [lo, hi] = limits[index];
-    return dir > 0 ? q[index] >= hi - tolerance : q[index] <= lo + tolerance;
-  }
-
-  function applyJointRotations() {
-    joints.forEach((joint, i) => {
-      joint.rotation.set(0,0,0);
-      joint.rotation[axisDefs[i]] = THREE.MathUtils.degToRad(q[i]);
-    });
-  }
-
-  function updateJointHighlight() {
-    jointVisuals.forEach((visual, i) => {
-      if (i === selectedJoint) visual.material = matSelected;
-      else if (motionMode === 'dual' && i === secondJoint) visual.material = matSecondary;
-      else visual.material = matJoint;
-    });
-  }
-
-  function refreshSecondJointOptions() {
-    const select = $('secondJoint');
-    if (!select) return;
-    const previous = secondJoint;
-    select.innerHTML = '';
-    for (let i = 0; i < 6; i++) {
-      if (i === selectedJoint) continue;
-      const option = document.createElement('option');
-      option.value = String(i);
-      option.textContent = `J${i + 1}`;
-      select.appendChild(option);
-    }
-    secondJoint = previous === selectedJoint ? (selectedJoint + 1) % 6 : previous;
-    if (secondJoint === selectedJoint) secondJoint = (selectedJoint + 1) % 6;
-    select.value = String(secondJoint);
-  }
-
-  function refreshSpeedLimits() {
-    const mainMax = maxSpeeds[selectedJoint];
-    const secondMax = maxSpeeds[secondJoint];
-    $('speed').max = mainMax;
-    $('secondSpeed').max = secondMax;
-    motionSpeed = Math.min(motionSpeed, mainMax);
-    secondSpeed = Math.min(secondSpeed, secondMax);
-    $('speed').value = motionSpeed;
-    $('secondSpeed').value = secondSpeed;
-    $('speedLabel').textContent = `主軸速度（J${selectedJoint+1} 上限 ${mainMax}°/s）`;
-    $('secondSpeedLabel').textContent = `第二軸速度（J${secondJoint+1} 上限 ${secondMax}°/s）`;
-    $('speedValue').textContent = `${motionSpeed.toFixed(1)} °/s`;
-    $('secondSpeedValue').textContent = `${secondSpeed.toFixed(1)} °/s`;
-  }
-
-  function updateMotionUI() {
-    refreshSpeedLimits();
-    const dual = motionMode === 'dual';
-    $('dualPanel').classList.toggle('active', dual);
-    $('startMotion').textContent = dual ? '啟動雙軸同步' : '啟動選定軸';
-    $('dualSummary').textContent = `主軸 J${selectedJoint + 1}（${direction > 0 ? '+' : '−'} ${motionSpeed.toFixed(0)}°/s）＋第二軸 J${secondJoint + 1}（${secondDirection > 0 ? '+' : '−'} ${secondSpeed.toFixed(0)}°/s）將同時運動`;
-    updateJointHighlight();
-  }
-
-  function updateControlFromJoint() {
-    const slider = $('jointAngle');
-    slider.min = limits[selectedJoint][0];
-    slider.max = limits[selectedJoint][1];
-    slider.value = q[selectedJoint];
-    $('jointAngleLabel').textContent = `J${selectedJoint+1} 角度（${axisDefs[selectedJoint].toUpperCase()} 軸旋轉）`;
-    $('jointAngleValue').textContent = `${q[selectedJoint].toFixed(1)}°`;
-    const [selectedLo, selectedHi] = limits[selectedJoint];
-    const negRemaining = q[selectedJoint] - selectedLo;
-    const posRemaining = selectedHi - q[selectedJoint];
-    $('limitReadout').innerHTML = `<strong>J${selectedJoint+1} 模型軸限：</strong>${formatLimit(selectedLo)} ～ ${formatLimit(selectedHi)}<br>距負向限位 ${negRemaining.toFixed(1)}°｜距正向限位 ${posRemaining.toFixed(1)}°`;
-    if (motionMode === 'dual') {
-      $('hudJoint').textContent = `J${selectedJoint+1} + J${secondJoint+1}`;
-      $('hudAngle').textContent = `${q[selectedJoint].toFixed(1)}° / ${q[secondJoint].toFixed(1)}°`;
-    } else {
-      $('hudJoint').textContent = `J${selectedJoint+1}`;
-      $('hudAngle').textContent = `${q[selectedJoint].toFixed(1)}°`;
-    }
-    document.querySelectorAll('.joint-btn').forEach((btn, i) => btn.classList.toggle('active', i === selectedJoint));
-    updateJointHighlight();
-    updateMotionUI();
-  }
-
-  function setSelectedJoint(index) {
-    selectedJoint = THREE.MathUtils.clamp(index, 0, 5);
-    refreshSecondJointOptions();
-    updateControlFromJoint();
-  }
-
-  function setJointAngle(index, angle, source = 'manual') {
-    if (source === 'manual') cancelProgramForManual('手動關節輸入接管');
-    const [lo, hi] = limits[index];
-    const previous = q.slice();
-    const candidate = q.slice();
-    candidate[index] = clampJoint(index, angle);
-    const floorResult = movePoseWithFloorGuard(previous, candidate);
-
-    if (floorResult.blocked) {
-      isMoving = false;
-      setMotionStatus(`地板防撞停止：J${index+1} 的要求姿態會使 ${floorResult.state.part} 低於 20 mm 安全間隙；已停在安全邊界。`, 'collision');
-    } else if (angle < lo || angle > hi) {
-      isMoving = false;
-      const boundary = angle < lo ? lo : hi;
-      setMotionStatus(`模型軸限保護：J${index+1} 已限制在 ${formatLimit(boundary)}。`, 'limit');
-    }
-    if (index === selectedJoint) updateControlFromJoint();
-  }
-
-  function buildJointButtons() {
-    const container = $('jointButtons');
-    for (let i=0; i<6; i++) {
-      const b = document.createElement('button');
-      b.className = 'joint-btn';
-      b.textContent = `J${i+1}`;
-      b.title = `關節 ${i+1}：繞 ${axisDefs[i].toUpperCase()} 軸旋轉`;
-      b.addEventListener('click', () => setSelectedJoint(i));
-      container.appendChild(b);
-    }
-  }
-
-  const presets = {
-    home: [0, -34, 72, 0, -38, 0],
-    inspect: [35, -55, 95, 40, -45, 70],
-    fold: [0, -72, 145, 0, -73, 0]
-  };
-
-  function setPose(target, source = 'manual') {
-    if (source === 'manual') cancelProgramForManual('切換模型參考姿態');
-    isMoving = false;
-    const candidate = target.map((value, i) => clampJoint(i, value));
-    const state = evaluateFloorAtPose(candidate);
-    if (state.collision) {
-      setMotionStatus(`姿態拒絕：${state.part} 的最低離地 ${(state.clearance * 1000).toFixed(1)} mm，小於 20 mm 安全間隙。`, 'collision');
-      updateControlFromJoint();
-      return false;
-    }
-    setPoseArray(candidate);
-    clearTrail();
-    updateControlFromJoint();
-    setMotionStatus('模型參考姿態已套用；地板防撞檢查通過。');
-    return true;
-  }
-
-  function clearTrail() {
-    trailCount = 0;
-    trailGeometry.setDrawRange(0, 0);
-    trailGeometry.attributes.position.needsUpdate = true;
-  }
-
-  function appendTrailPoint() {
-    if (!trailEnabled) return;
-    const p = new THREE.Vector3();
-    tcp.getWorldPosition(p);
-    if (trailCount > 0) {
-      const i = (trailCount-1)*3;
-      const dx = p.x-trailPositions[i], dy=p.y-trailPositions[i+1], dz=p.z-trailPositions[i+2];
-      if (dx*dx+dy*dy+dz*dz < 0.000025) return;
-    }
-    if (trailCount >= trailMax) {
-      trailPositions.copyWithin(0, 3);
-      trailCount = trailMax-1;
-    }
-    const i = trailCount*3;
-    trailPositions[i] = p.x;
-    trailPositions[i+1] = p.y;
-    trailPositions[i+2] = p.z;
-    trailCount++;
-    trailGeometry.setDrawRange(0, trailCount);
-    trailGeometry.attributes.position.needsUpdate = true;
-  }
-
-  function updateTCPReadout() {
-    const worldPosition = new THREE.Vector3();
-    const worldQuaternion = new THREE.Quaternion();
-    const scale = new THREE.Vector3();
-    tcp.matrixWorld.decompose(worldPosition, worldQuaternion, scale);
-
-    // Three.js: X right, Y up, Z depth. BASE model: X right, Y horizontal depth, Z up.
-    const basePosition = new THREE.Vector3(worldPosition.x, -worldPosition.z, worldPosition.y);
-    const worldRotation = new THREE.Matrix4().makeRotationFromQuaternion(worldQuaternion);
-    const baseRotation = baseFromWorldRotation.clone().multiply(worldRotation);
-    const e = new THREE.Euler().setFromRotationMatrix(baseRotation, 'XYZ');
-    const x = basePosition.x * 1000;
-    const y = basePosition.y * 1000;
-    const z = basePosition.z * 1000;
-    const rx = THREE.MathUtils.radToDeg(e.x);
-    const ry = THREE.MathUtils.radToDeg(e.y);
-    const rz = THREE.MathUtils.radToDeg(e.z);
-
-    $('posX').textContent = `${x.toFixed(1)} mm`;
-    $('posY').textContent = `${y.toFixed(1)} mm`;
-    $('posZ').textContent = `${z.toFixed(1)} mm`;
-    $('rotX').textContent = `${rx.toFixed(1)}°`;
-    $('rotY').textContent = `${ry.toFixed(1)}°`;
-    $('rotZ').textContent = `${rz.toFixed(1)}°`;
-    $('hudTcpX').textContent = x.toFixed(1);
-    $('hudTcpY').textContent = y.toFixed(1);
-    $('hudTcpZ').textContent = z.toFixed(1);
-    $('hudRotX').textContent = rx.toFixed(1);
-    $('hudRotY').textContent = ry.toFixed(1);
-    $('hudRotZ').textContent = rz.toFixed(1);
-    updateFloorReadout(readFloorState());
-  }
-
-  // ------------------------------
-  // G-code-like 關節空間程式
-  // 這是模擬器自訂語法，不是 FANUC TP/LS 或控制器可直接執行的 G-code。
-  // ------------------------------
-  const GCODE_EXAMPLE = `%
-O1000 (M-20iD/25 joint-space continuous demo)
-G90
-G64
-G1 J1=0 J2=-34 J3=72 J4=0 J5=-38 J6=0 F35
-G1 J1=20 J2=-44 J3=84 J4=20 J5=-46 J6=30 F40
-G1 J1=40 J2=-54 J3=96 J4=40 J5=-54 J6=60 F40
-G1 J1=60 J2=-64 J3=108 J4=60 J5=-62 J6=90 F40
-G1 J1=40 J2=-54 J3=96 J4=40 J5=-54 J6=60 F40
-G1 J1=20 J2=-44 J3=84 J4=20 J5=-46 J6=30 F40
-G1 J1=0 J2=-34 J3=72 J4=0 J5=-38 J6=0 F35
-M30
-%`;
-
-  const program = {
-    state: 'idle', // idle | running | paused | completed | error
-    blocks: [],
-    pc: 0,
-    current: null,
-    elapsed: 0,
-    source: '',
-    warnings: [],
-    singleStep: false,
-    loopCount: 0
-  };
-  let programOverride = 0.30;
-
-  function setGcodeStatus(message, kind = '') {
-    const el = $('gcodeStatus');
-    if (!el) return;
-    el.className = `program-status${kind ? ` ${kind}` : ''}`;
-    el.textContent = message;
-  }
-
-  function setProgramState(state) {
-    program.state = state;
-    const labels = {
-      idle: '待命', running: '執行中', paused: '暫停', completed: '完成', error: '錯誤'
-    };
-    $('hudProgram').textContent = labels[state] || state;
-  }
-
-  function updateProgramProgress(localRatio = 0) {
-    const count = program.blocks.length;
-    const completed = Math.min(program.pc, count);
-    const ratio = count ? Math.min(1, (completed + Math.max(0, Math.min(1, localRatio))) / count) : 0;
-    $('gcodeProgress').style.width = `${(ratio * 100).toFixed(1)}%`;
-  }
-
-  function stripGcodeComments(rawLine) {
-    let line = rawLine.replace(/\([^)]*\)/g, ' ');
-    const semicolon = line.indexOf(';');
-    if (semicolon >= 0) line = line.slice(0, semicolon);
-    return line.trim().toUpperCase();
-  }
-
-  function numberWord(line, letter) {
-    const number = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)';
-    const match = line.match(new RegExp(`\\b${letter}\\s*=?\\s*(${number})`, 'i'));
-    return match ? Number(match[1]) : null;
-  }
-
-  function moveDuration(start, target, feed, rapid) {
-    let duration = 0;
-    for (let i = 0; i < 6; i++) {
-      const distance = Math.abs(target[i] - start[i]);
-      const allowed = rapid ? maxSpeeds[i] : Math.min(feed, maxSpeeds[i]);
-      if (distance > 1e-9) duration = Math.max(duration, distance / Math.max(allowed, 0.001));
-    }
-    return Math.max(duration, 0.04);
-  }
-
-  function compileGcode(source, startQ = q) {
-    const lines = source.replace(/\r/g, '').split('\n');
-    const errors = [];
-    const warnings = [];
-    const blocks = [];
-    let absolute = true;
-    let motionCode = 1;
-    let pathMode = 'continuous';
-    let modalFeed = 30;
-    let cursor = startQ.slice();
-    let hasExplicitEnd = false;
-
-    const supportedG = new Set([0, 1, 4, 61, 64, 90, 91]);
-    const supportedM = new Set([0, 2, 30, 99]);
-    const num = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)';
-
-    lines.forEach((raw, index) => {
-      const sourceLine = index + 1;
-      const line = stripGcodeComments(raw);
-      if (!line || line === '%' || /^O\d+\b/.test(line)) return;
-
-      if (new RegExp(`\\b[XYZABCUVW]\\s*=?\\s*${num}`, 'i').test(line)) {
-        errors.push(`第 ${sourceLine} 行：目前只支援 J1～J6 關節座標；X/Y/Z Cartesian 指令需要 IK、姿態組態與奇異點處理。`);
-        return;
-      }
-
-      const gCodes = [...line.matchAll(/\bG0*(\d+(?:\.\d+)?)\b/g)].map(m => Number(m[1]));
-      const mCodes = [...line.matchAll(/\bM0*(\d+)\b/g)].map(m => Number(m[1]));
-      const badG = gCodes.find(code => !supportedG.has(code));
-      const badM = mCodes.find(code => !supportedM.has(code));
-      if (badG !== undefined) errors.push(`第 ${sourceLine} 行：不支援 G${badG}。`);
-      if (badM !== undefined) errors.push(`第 ${sourceLine} 行：不支援 M${badM}。`);
-      if (badG !== undefined || badM !== undefined) return;
-
-      if (gCodes.includes(90)) absolute = true;
-      if (gCodes.includes(91)) absolute = false;
-      if (gCodes.includes(61)) pathMode = 'exact';
-      if (gCodes.includes(64)) pathMode = 'continuous';
-      if (gCodes.includes(0)) motionCode = 0;
-      if (gCodes.includes(1)) motionCode = 1;
-
-      const feed = numberWord(line, 'F');
-      if (feed !== null) {
-        if (!(feed > 0)) errors.push(`第 ${sourceLine} 行：F 必須大於 0 degree/s。`);
-        else modalFeed = feed;
-      }
-
-      const jointWords = [];
-      const jointRegex = new RegExp(`\\bJ([1-6])\\s*=?\\s*(${num})`, 'gi');
-      for (const match of line.matchAll(jointRegex)) {
-        jointWords.push({ index: Number(match[1]) - 1, value: Number(match[2]) });
-      }
-      const mentionsJoint = /\bJ[1-6]\b/i.test(line);
-      if (mentionsJoint && jointWords.length === 0) {
-        errors.push(`第 ${sourceLine} 行：J 軸格式不完整，請使用 J1=角度。`);
-        return;
-      }
-
-      const isDwell = gCodes.includes(4);
-      const actionM = mCodes.find(code => supportedM.has(code));
-      if (isDwell && jointWords.length) {
-        errors.push(`第 ${sourceLine} 行：G4 暫停不可與關節移動寫在同一行。`);
-        return;
-      }
-      if (actionM !== undefined && jointWords.length) {
-        errors.push(`第 ${sourceLine} 行：M 指令與關節移動請分行撰寫。`);
-        return;
-      }
-
-      if (isDwell) {
-        const pValue = numberWord(line, 'P');
-        const sValue = numberWord(line, 'S');
-        const milliseconds = pValue !== null ? pValue : (sValue !== null ? sValue * 1000 : null);
-        if (milliseconds === null || milliseconds < 0) {
-          errors.push(`第 ${sourceLine} 行：G4 必須指定 P毫秒 或 S秒。`);
-        } else {
-          blocks.push({ type: 'dwell', milliseconds, line: sourceLine, source: raw.trim() });
-        }
-        return;
-      }
-
-      if (jointWords.length) {
-        if (!(modalFeed > 0)) {
-          errors.push(`第 ${sourceLine} 行：尚未設定有效 F 速度。`);
-          return;
-        }
-        const target = cursor.slice();
-        const jointMap = new Map();
-        for (const word of jointWords) {
-          if (jointMap.has(word.index)) warnings.push(`第 ${sourceLine} 行：J${word.index + 1} 重複，採用最後一個值。`);
-          jointMap.set(word.index, word.value);
-        }
-        for (const [jointIndex, jointValue] of jointMap.entries()) {
-          target[jointIndex] = absolute ? jointValue : cursor[jointIndex] + jointValue;
-        }
-
-        let valid = true;
-        for (let i = 0; i < 6; i++) {
-          const [lo, hi] = limits[i];
-          if (target[i] < lo - 1e-8 || target[i] > hi + 1e-8) {
-            errors.push(`第 ${sourceLine} 行：J${i + 1} 目標 ${target[i].toFixed(3)}° 超出 ${formatLimit(lo)} ～ ${formatLimit(hi)}。`);
-            valid = false;
-          }
-        }
-        if (!valid) return;
-
-        const cappedAxes = [...jointMap.keys()].filter(jointIndex => modalFeed > maxSpeeds[jointIndex]);
-        if (cappedAxes.length && motionCode !== 0) {
-          warnings.push(`第 ${sourceLine} 行：F${modalFeed} 高於 ${cappedAxes.map(i => `J${i + 1}`).join('、')} 的模型速度上限，執行時會個別限速。`);
-        }
-
-        const rapid = motionCode === 0;
-        const hasMotion = target.some((value, jointIndex) => Math.abs(value - cursor[jointIndex]) > 1e-9);
-        if (hasMotion) {
-          const duration = moveDuration(cursor, target, modalFeed, rapid);
-          blocks.push({
-            type: 'move', start: cursor.slice(), target: target.slice(), duration,
-            feed: modalFeed, rapid, pathMode, line: sourceLine, source: raw.trim(),
-            vStart: Array(6).fill(0), vEnd: Array(6).fill(0)
-          });
-        }
-        cursor = target;
-      }
-
-      if (actionM !== undefined) {
-        if (actionM === 0) blocks.push({ type: 'pause', line: sourceLine, source: raw.trim() });
-        if (actionM === 2 || actionM === 30) {
-          blocks.push({ type: 'end', line: sourceLine, source: raw.trim(), code: actionM });
-          hasExplicitEnd = true;
-        }
-        if (actionM === 99) {
-          blocks.push({ type: 'loop', line: sourceLine, source: raw.trim() });
-          hasExplicitEnd = true;
-        }
-      }
-
-      // Remove all recognized words; remaining alphabetic tokens indicate likely typos.
-      let residue = line
-        .replace(/\bN\d+\b/g, ' ')
-        .replace(/\bO\d+\b/g, ' ')
-        .replace(/\bG0*\d+(?:\.\d+)?\b/g, ' ')
-        .replace(/\bM0*\d+\b/g, ' ')
-        .replace(new RegExp(`\\bJ[1-6]\\s*=?\\s*${num}`, 'gi'), ' ')
-        .replace(new RegExp(`\\b[FPS]\\s*=?\\s*${num}`, 'gi'), ' ')
-        .replace(/[%\s]/g, '');
-      if (/[A-Z]/.test(residue)) warnings.push(`第 ${sourceLine} 行：忽略無法辨識的內容「${residue}」。`);
-    });
-
-    if (!hasExplicitEnd && blocks.length) {
-      blocks.push({ type: 'end', line: lines.length, source: '(implicit end)', code: 2 });
-      warnings.push('程式未包含 M2、M30 或 M99，已自動在結尾停止。');
-    }
-
-    // C1 joint-space blending for adjacent G64 moves. If a joint reverses direction,
-    // its waypoint velocity is set to zero to avoid overshoot.
-    for (let i = 0; i < blocks.length - 1; i++) {
-      const a = blocks[i];
-      const b = blocks[i + 1];
-      if (a.type !== 'move' || b.type !== 'move') continue;
-      if (a.pathMode !== 'continuous' || b.pathMode !== 'continuous') continue;
-      for (let j = 0; j < 6; j++) {
-        const s0 = (a.target[j] - a.start[j]) / a.duration;
-        const s1 = (b.target[j] - b.start[j]) / b.duration;
-        if (Math.abs(s0) < 1e-9 || Math.abs(s1) < 1e-9 || Math.sign(s0) !== Math.sign(s1)) continue;
-        let tangent = 2 * s0 * s1 / (s0 + s1);
-        const cap = Math.min(maxSpeeds[j], 3 * Math.min(Math.abs(s0), Math.abs(s1)));
-        tangent = THREE.MathUtils.clamp(tangent, -cap, cap);
-        a.vEnd[j] = tangent;
-        b.vStart[j] = tangent;
-      }
-    }
-
-    return { blocks, errors, warnings, endQ: cursor };
-  }
-
-  function interpolateProgramPose(block, u) {
-    if (block.pathMode === 'exact') {
-      const s = u * u * u * (10 + u * (-15 + 6 * u));
-      return block.start.map((value, i) => value + (block.target[i] - value) * s);
-    }
-    const u2 = u * u;
-    const u3 = u2 * u;
-    const h00 = 2 * u3 - 3 * u2 + 1;
-    const h10 = u3 - 2 * u2 + u;
-    const h01 = -2 * u3 + 3 * u2;
-    const h11 = u3 - u2;
-    return block.start.map((value, i) => h00 * value
-      + h10 * block.duration * block.vStart[i]
-      + h01 * block.target[i]
-      + h11 * block.duration * block.vEnd[i]);
-  }
-
-  function scanProgramFloorSafety(blocks) {
-    const saved = q.slice();
-    try {
-      for (const block of blocks) {
-        if (block.type !== 'move') continue;
-        const maxDelta = Math.max(...block.target.map((value, i) => Math.abs(value - block.start[i])));
-        const samples = Math.max(12, Math.min(220, Math.ceil(maxDelta / 1.5)));
-        for (let sampleIndex = 0; sampleIndex <= samples; sampleIndex++) {
-          const u = sampleIndex / samples;
-          const pose = interpolateProgramPose(block, u);
-          setPoseArray(pose);
-          const state = readFloorState();
-          if (state.collision) {
-            return {
-              line: block.line, source: block.source, ratio: u, state, pose
-            };
-          }
-        }
-      }
-      return null;
-    } finally {
-      setPoseArray(saved);
-    }
-  }
-
-  function validateCurrentGcode(showSuccess = true) {
-    const source = $('gcodeEditor').value;
-    const result = compileGcode(source, q);
-    if (result.errors.length) {
-      setProgramState('error');
-      setGcodeStatus(`程式檢查失敗：\n${result.errors.join('\n')}`, 'error');
-      return null;
-    }
-    const floorIssue = scanProgramFloorSafety(result.blocks);
-    if (floorIssue) {
-      setProgramState('error');
-      setGcodeStatus(`地板防撞檢查失敗：第 ${floorIssue.line} 行約 ${(floorIssue.ratio * 100).toFixed(1)}% 路徑會使 ${floorIssue.state.part} 的最低離地 ${(floorIssue.state.clearance * 1000).toFixed(1)} mm。\n${floorIssue.source}`, 'error');
-      return null;
-    }
-    program.blocks = result.blocks;
-    program.source = source;
-    program.warnings = result.warnings;
-    program.pc = 0;
-    program.current = null;
-    updateProgramProgress(0);
-    if (showSuccess) {
-      const moveCount = result.blocks.filter(b => b.type === 'move').length;
-      const warningText = result.warnings.length ? `\n警告：\n${result.warnings.join('\n')}` : '';
-      setProgramState('idle');
-      setGcodeStatus(`檢查通過：${moveCount} 個運動區段、${result.blocks.length} 個執行區塊。${warningText}`, 'ok');
-    }
-    return result;
-  }
-
-  function programBlockDescription(block) {
-    if (!block) return '準備下一區段';
-    if (block.type === 'move') return `${block.rapid ? 'G0' : 'G1'}｜${block.pathMode === 'continuous' ? 'G64 連續' : 'G61 精確停止'}`;
-    if (block.type === 'dwell') return `G4 暫停 ${block.milliseconds} ms`;
-    if (block.type === 'pause') return 'M0 程式暫停';
-    if (block.type === 'loop') return 'M99 迴圈';
-    return '程式結束';
-  }
-
-  function prepareProgramFromEditor() {
-    const result = validateCurrentGcode(false);
-    if (!result) return false;
-    program.blocks = result.blocks;
-    program.source = $('gcodeEditor').value;
-    program.warnings = result.warnings;
-    program.pc = 0;
-    program.current = null;
-    program.elapsed = 0;
-    program.loopCount = 0;
-    program.singleStep = false;
-    updateProgramProgress(0);
-    return true;
-  }
-
-  function startOrResumeGcode() {
-    isMoving = false;
-    setMotionStatus('狀態：G-code 程式控制中。', 'running');
-    if (program.state === 'paused' && program.blocks.length && program.source === $('gcodeEditor').value) {
-      program.singleStep = false;
-      setProgramState('running');
-      setGcodeStatus(`續跑：下一執行區塊 ${program.pc + 1}/${program.blocks.length}。`, 'running');
-      return;
-    }
-    if (!prepareProgramFromEditor()) return;
-    clearTrail();
-    trailEnabled = true;
-    $('toggleTrail').textContent = '關閉軌跡';
-    setProgramState('running');
-    setGcodeStatus(`程式開始：共 ${program.blocks.length} 個執行區塊；速度倍率 ${Math.round(programOverride * 100)}%。`, 'running');
-  }
-
-  function pauseGcode(reason = '使用者暫停') {
-    if (program.state !== 'running') return;
-    setProgramState('paused');
-    setGcodeStatus(`${reason}。\n目前：${program.current ? `第 ${program.current.block.line} 行 ${program.current.block.source}` : '區段交界'}`, 'pause');
-  }
-
-  function stopGcodeProgram(reason = '使用者停止', resetProgress = false) {
-    if (program.state === 'idle' && !program.current) return;
-    program.current = null;
-    program.elapsed = 0;
-    program.singleStep = false;
-    if (resetProgress) {
-      program.pc = 0;
-      updateProgramProgress(0);
-    }
-    setProgramState('idle');
-    setGcodeStatus(`程式已停止：${reason}。\n機械手臂保持目前關節位置。`);
-  }
-
-  function cancelProgramForManual(reason) {
-    if (program.state === 'running' || program.state === 'paused') stopGcodeProgram(reason, false);
-  }
-
-  function singleStepGcode() {
-    isMoving = false;
-    if (program.state === 'running') {
-      setGcodeStatus('程式正在執行；請先暫停再使用單段。', 'pause');
-      return;
-    }
-    if (!program.blocks.length || program.source !== $('gcodeEditor').value || program.state === 'completed' || program.state === 'error') {
-      if (!prepareProgramFromEditor()) return;
-    }
-    if (program.pc >= program.blocks.length) {
-      if (!prepareProgramFromEditor()) return;
-    }
-    program.singleStep = true;
-    setProgramState('running');
-    setGcodeStatus(`單段執行：區塊 ${program.pc + 1}/${program.blocks.length}。`, 'running');
-  }
-
-  function restartProgramLoop() {
-    const result = compileGcode(program.source, q);
-    if (result.errors.length) {
-      setProgramState('error');
-      setGcodeStatus(`循環重新編譯失敗：\n${result.errors.join('\n')}`, 'error');
-      return false;
-    }
-    const floorIssue = scanProgramFloorSafety(result.blocks);
-    if (floorIssue) {
-      setProgramState('error');
-      setGcodeStatus(`循環地板防撞檢查失敗：第 ${floorIssue.line} 行約 ${(floorIssue.ratio * 100).toFixed(1)}% 路徑會使 ${floorIssue.state.part} 低於安全間隙。`, 'error');
-      return false;
-    }
-    program.blocks = result.blocks;
-    program.pc = 0;
-    program.current = null;
-    program.elapsed = 0;
-    program.loopCount += 1;
-    updateProgramProgress(0);
-    return true;
-  }
-
-  function loadNextProgramBlock() {
-    while (program.state === 'running' && !program.current) {
-      if (program.pc >= program.blocks.length) {
-        setProgramState('completed');
-        updateProgramProgress(1);
-        setGcodeStatus('程式執行完成。', 'ok');
-        return;
-      }
-      const block = program.blocks[program.pc];
-      if (block.type === 'pause') {
-        program.pc += 1;
-        updateProgramProgress(0);
-        setProgramState('paused');
-        setGcodeStatus(`M0 暫停｜第 ${block.line} 行。按「開始／續跑」繼續。`, 'pause');
-        return;
-      }
-      if (block.type === 'end') {
-        program.pc += 1;
-        if ($('gcodeLoop').checked) {
-          if (!restartProgramLoop()) return;
-          setGcodeStatus(`M${block.code} 循環：第 ${program.loopCount + 1} 圈。`, 'running');
-          continue;
-        }
-        setProgramState('completed');
-        updateProgramProgress(1);
-        setGcodeStatus(`M${block.code}：程式完成。`, 'ok');
-        return;
-      }
-      if (block.type === 'loop') {
-        if (!restartProgramLoop()) return;
-        setGcodeStatus(`M99：重新執行，第 ${program.loopCount + 1} 圈。`, 'running');
-        continue;
-      }
-
-      if (block.type === 'move') {
-        const actualDuration = moveDuration(q, block.target, block.feed, block.rapid);
-        program.current = {
-          block,
-          start: q.slice(),
-          duration: actualDuration,
-          elapsed: 0
-        };
-      } else if (block.type === 'dwell') {
-        program.current = { block, elapsed: 0, duration: block.milliseconds / 1000 };
-      }
-      setGcodeStatus(`執行中｜區塊 ${program.pc + 1}/${program.blocks.length}｜第 ${block.line} 行\n${block.source}\n${programBlockDescription(block)}｜倍率 ${Math.round(programOverride * 100)}%`, 'running');
-    }
-  }
-
-  function completeCurrentProgramBlock() {
-    program.current = null;
-    program.elapsed = 0;
-    program.pc += 1;
-    updateProgramProgress(0);
-    if (program.singleStep) {
-      program.singleStep = false;
-      setProgramState('paused');
-      setGcodeStatus(`單段完成：已完成區塊 ${program.pc}/${program.blocks.length}。`, 'pause');
-    }
-  }
-
-  function updateGcodeProgram(dt) {
-    if (program.state !== 'running') return;
-    if (!program.current) loadNextProgramBlock();
-    if (program.state !== 'running' || !program.current) return;
-
-    const current = program.current;
-    const block = current.block;
-    if (block.type === 'dwell') {
-      current.elapsed += dt; // G4 dwell 不受速度倍率影響
-      const u = Math.min(1, current.elapsed / Math.max(current.duration, 1e-6));
-      updateProgramProgress(u);
-      if (u >= 1) completeCurrentProgramBlock();
-      return;
-    }
-
-    current.elapsed += dt * programOverride;
-    const u = Math.min(1, current.elapsed / Math.max(current.duration, 1e-6));
-    const previous = q.slice();
-    const candidate = block.pathMode === 'exact'
-      ? (() => {
-          const s = u * u * u * (10 + u * (-15 + 6 * u));
-          return current.start.map((value, i) => value + (block.target[i] - value) * s);
-        })()
-      : (() => {
-          const u2 = u * u;
-          const u3 = u2 * u;
-          const h00 = 2 * u3 - 3 * u2 + 1;
-          const h10 = u3 - 2 * u2 + u;
-          const h01 = -2 * u3 + 3 * u2;
-          const h11 = u3 - u2;
-          return current.start.map((value, i) => h00 * value
-            + h10 * current.duration * block.vStart[i]
-            + h01 * block.target[i]
-            + h11 * current.duration * block.vEnd[i]);
-        })();
-
-    for (let i = 0; i < 6; i++) {
-      const [lo, hi] = limits[i];
-      if (!Number.isFinite(candidate[i]) || candidate[i] < lo - 1e-5 || candidate[i] > hi + 1e-5) {
-        setPoseArray(previous);
-        setProgramState('error');
-        program.current = null;
-        setGcodeStatus(`運動規劃錯誤：插值使 J${i + 1} 超出模型軸限，程式已停止。`, 'error');
-        return;
-      }
-    }
-
-    const floorResult = movePoseWithFloorGuard(previous, candidate);
-    if (floorResult.blocked) {
-      setProgramState('error');
-      program.current = null;
-      setGcodeStatus(`地板防撞停止：第 ${block.line} 行執行時，${floorResult.state.part} 將低於 20 mm 安全間隙。程式已停在碰撞前姿態。\n${block.source}`, 'error');
-      setMotionStatus('G-code 因地板碰撞風險停止。', 'collision');
-      updateControlFromJoint();
-      return;
-    }
-
-    if (u >= 1) {
-      setPoseArray(block.target);
-      completeCurrentProgramBlock();
-    } else {
-      updateProgramProgress(u);
-    }
-    updateControlFromJoint();
-  }
-
-  function renderLimitGrid() {
-    limits.forEach(([lo, hi], i) => {
-      const cell = $(`limitCell${i + 1}`);
-      if (cell) cell.innerHTML = `<strong>J${i + 1}</strong>${formatLimit(lo)} ～ ${formatLimit(hi)}`;
-    });
-  }
-
-  // ------------------------------
-  // WebGPU / NVIDIA 偵測與 GPU Compute
-  // ------------------------------
-  let gpuAdapter = null;
-  let gpuDevice = null;
-  let gpuInfo = {};
-
-  function getWebGLRendererInfo() {
-    try {
-      const gl = renderer.getContext();
-      const ext = gl.getExtension('WEBGL_debug_renderer_info');
-      return ext
-        ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)
-        : gl.getParameter(gl.RENDERER);
-    } catch {
-      return '無法讀取 WebGL 顯示卡資訊';
-    }
-  }
-
-  function setGPUStatus(kind, main, sub) {
-    const dot = $('gpuDot');
-    dot.className = `status-dot ${kind}`;
-    $('gpuMain').textContent = main;
-    $('gpuSub').textContent = sub;
-  }
-
-  async function initWebGPU() {
-    gpuAdapter = null;
-    gpuDevice = null;
-    gpuInfo = {};
-
-    if (!window.isSecureContext) {
-      setGPUStatus('bad', 'WebGPU 需要安全來源', '請不要直接以 file:// 開啟；請用 localhost 或 HTTPS 執行本檔案。3D 顯示仍可使用 WebGL。');
-      return false;
-    }
-
-    if (!('gpu' in navigator)) {
-      setGPUStatus('bad', '此瀏覽器未提供 WebGPU', `3D 畫面仍使用 WebGL：${getWebGLRendererInfo()}。請改用最新版 Chrome 或 Edge，並確認硬體加速已開啟。`);
-      return false;
-    }
-
-    try {
-      setGPUStatus('', '正在要求高效能 GPU…', 'WebGPU powerPreference = high-performance');
-      gpuAdapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-      if (!gpuAdapter) throw new Error('瀏覽器未回傳可用的 GPUAdapter');
-
-      gpuInfo = gpuAdapter.info || {};
-      if ((!gpuInfo || Object.keys(gpuInfo).length === 0) && gpuAdapter.requestAdapterInfo) {
-        gpuInfo = await gpuAdapter.requestAdapterInfo();
-      }
-
-      gpuDevice = await gpuAdapter.requestDevice();
-      gpuDevice.lost.then((info) => {
-        setGPUStatus('bad', 'WebGPU 裝置已中斷', info.message || info.reason || '未知原因');
-        gpuDevice = null;
-      });
-
-      const webglRenderer = getWebGLRendererInfo();
-      const detail = [gpuInfo.vendor, gpuInfo.architecture, gpuInfo.device, gpuInfo.description]
-        .filter(Boolean).join(' · ') || webglRenderer || '瀏覽器未公開顯示卡名稱';
-      const isNvidia = /nvidia|10de|geforce|quadro|rtx|gtx/i.test(detail);
-
-      if (isNvidia) {
-        setGPUStatus('ok', '已連接 NVIDIA GPU（WebGPU）', detail);
-      } else {
-        setGPUStatus('', 'WebGPU 已啟用，但未確認為 NVIDIA', `${detail}。瀏覽器可能隱藏型號，或目前選到其他 GPU。`);
-      }
-      return true;
-    } catch (error) {
-      console.error(error);
-      setGPUStatus('bad', 'WebGPU 初始化失敗', error.message || String(error));
-      return false;
-    }
-  }
-
-  async function runGpuBenchmark() {
-    const outputEl = $('benchmarkResult');
-    $('gpuBenchmark').disabled = true;
-    outputEl.textContent = '正在建立 WGSL compute pipeline 並執行六軸正向運動學批次計算…';
-
-    try {
-      if (!gpuDevice && !(await initWebGPU())) throw new Error('沒有可用的 WebGPU 裝置');
-
-      const count = 524288; // 52 萬組姿態
-      const shaderCode = /* wgsl */`
-        struct Params {
-          qA: vec4<f32>,
-          qB: vec4<f32>,
-          count: u32,
-          _pad0: u32,
-          _pad1: u32,
-          _pad2: u32,
-        };
-
-        @group(0) @binding(0) var<uniform> params: Params;
-        @group(0) @binding(1) var<storage, read_write> result: array<vec4<f32>>;
-
-        fn rx(a: f32) -> mat3x3<f32> {
-          let c = cos(a); let s = sin(a);
-          return mat3x3<f32>(
-            vec3<f32>(1.0,0.0,0.0),
-            vec3<f32>(0.0,c,s),
-            vec3<f32>(0.0,-s,c)
-          );
-        }
-        fn ry(a: f32) -> mat3x3<f32> {
-          let c = cos(a); let s = sin(a);
-          return mat3x3<f32>(
-            vec3<f32>(c,0.0,-s),
-            vec3<f32>(0.0,1.0,0.0),
-            vec3<f32>(s,0.0,c)
-          );
-        }
-        fn rz(a: f32) -> mat3x3<f32> {
-          let c = cos(a); let s = sin(a);
-          return mat3x3<f32>(
-            vec3<f32>(c,s,0.0),
-            vec3<f32>(-s,c,0.0),
-            vec3<f32>(0.0,0.0,1.0)
-          );
-        }
-
-        @compute @workgroup_size(256)
-        fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-          let i = gid.x;
-          if (i >= params.count) { return; }
-
-          let f = f32(i);
-          let ripple = 0.13 * sin(f * 0.00091) + 0.07 * cos(f * 0.00037);
-          let q0 = params.qA.x + ripple;
-          let q1 = params.qA.y + ripple * 0.73;
-          let q2 = params.qA.z - ripple * 0.51;
-          let q3 = params.qA.w + ripple * 1.17;
-          let q4 = params.qB.x - ripple * 0.89;
-          let q5 = params.qB.y + ripple * 1.31;
-
-          var R = mat3x3<f32>(
-            vec3<f32>(1.0,0.0,0.0),
-            vec3<f32>(0.0,1.0,0.0),
-            vec3<f32>(0.0,0.0,1.0)
-          );
-          var p = vec3<f32>(0.0, 0.425, 0.0);
-
-          R = R * ry(q0);
-          R = R * rz(q1); p += R * vec3<f32>(0.0,0.840,0.0);
-          R = R * rz(q2); p += R * vec3<f32>(0.215,0.890,0.0);
-          R = R * ry(q3); p += R * vec3<f32>(0.0,0.040,0.0);
-          R = R * rz(q4); p += R * vec3<f32>(0.0,0.030,0.0);
-          R = R * ry(q5); p += R * vec3<f32>(0.0,0.520,0.0);
-
-          result[i] = vec4<f32>(p, length(p));
-        }
-      `;
-
-      const shader = gpuDevice.createShaderModule({ code: shaderCode });
-      const pipeline = await gpuDevice.createComputePipelineAsync({
-        layout: 'auto',
-        compute: { module: shader, entryPoint: 'main' }
-      });
-
-      const paramBuffer = gpuDevice.createBuffer({
-        size: 48,
-        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
-      });
-      const outputBuffer = gpuDevice.createBuffer({
-        size: count * 16,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
-      });
-      const readBuffer = gpuDevice.createBuffer({
-        size: 16,
-        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
-      });
-
-      const params = new ArrayBuffer(48);
-      const floats = new Float32Array(params);
-      q.forEach((deg, i) => floats[i] = THREE.MathUtils.degToRad(deg));
-      const uints = new Uint32Array(params);
-      uints[8] = count;
-      gpuDevice.queue.writeBuffer(paramBuffer, 0, params);
-
-      const bindGroup = gpuDevice.createBindGroup({
-        layout: pipeline.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: paramBuffer } },
-          { binding: 1, resource: { buffer: outputBuffer } }
-        ]
-      });
-
-      const encoder = gpuDevice.createCommandEncoder();
-      const pass = encoder.beginComputePass();
-      pass.setPipeline(pipeline);
-      pass.setBindGroup(0, bindGroup);
-      pass.dispatchWorkgroups(Math.ceil(count / 256));
-      pass.end();
-      encoder.copyBufferToBuffer(outputBuffer, 0, readBuffer, 0, 16);
-
-      const t0 = performance.now();
-      gpuDevice.queue.submit([encoder.finish()]);
-      await readBuffer.mapAsync(GPUMapMode.READ);
-      const elapsed = performance.now() - t0;
-      const sample = new Float32Array(readBuffer.getMappedRange().slice(0));
-      readBuffer.unmap();
-
-      paramBuffer.destroy();
-      outputBuffer.destroy();
-      readBuffer.destroy();
-
-      const rate = count / (elapsed / 1000) / 1e6;
-      const info = [gpuInfo.vendor, gpuInfo.architecture, gpuInfo.description].filter(Boolean).join(' ') || 'WebGPU adapter';
-      outputEl.innerHTML = `完成 <b>${count.toLocaleString()}</b> 組姿態計算；提交至結果可讀取時間 <b>${elapsed.toFixed(2)} ms</b>，約 <b>${rate.toFixed(2)} M poses/s</b>。<br>範例 TCP = (${sample[0].toFixed(3)}, ${sample[1].toFixed(3)}, ${sample[2].toFixed(3)}) m；GPU：${info}`;
-    } catch (error) {
-      console.error(error);
-      outputEl.innerHTML = `<span class="warn">GPU 測試失敗：</span>${error.message || String(error)}`;
-    } finally {
-      $('gpuBenchmark').disabled = false;
-    }
-  }
-
-  // ------------------------------
-  // UI 事件
-  // ------------------------------
-  buildJointButtons();
-  refreshSecondJointOptions();
-  applyJointRotations();
-  renderLimitGrid();
-  setProgramState('idle');
-  updateControlFromJoint();
-
-  $('jointAngle').addEventListener('input', (e) => setJointAngle(selectedJoint, Number(e.target.value)));
-  $('minusStep').addEventListener('click', () => setJointAngle(selectedJoint, q[selectedJoint]-1));
-  $('plusStep').addEventListener('click', () => setJointAngle(selectedJoint, q[selectedJoint]+1));
-  $('zeroJoint').addEventListener('click', () => setJointAngle(selectedJoint, 0));
-
-  $('speed').addEventListener('input', (e) => {
-    motionSpeed = Number(e.target.value);
-    $('speedValue').textContent = `${motionSpeed.toFixed(1)} °/s`;
-    updateMotionUI();
+}
+
+const axisSelect=document.getElementById("axisSelect");
+const targetSlider=document.getElementById("targetSlider");
+const targetInput=document.getElementById("targetInput");
+const targetLabel=document.getElementById("targetLabel");
+const speedInput=document.getElementById("speedInput");
+
+function syncSelectedLimits(){
+  selected=Number(axisSelect.value);
+  targetSlider.min=limits[selected][0]; targetSlider.max=limits[selected][1];
+  targetInput.min=limits[selected][0]; targetInput.max=limits[selected][1];
+  targetSlider.value=angles[selected]; targetInput.value=angles[selected];
+  targetLabel.textContent=angles[selected].toFixed(1)+"°";
+}
+axisSelect.addEventListener("change",syncSelectedLimits);
+targetSlider.addEventListener("input",()=>{
+  targetInput.value=targetSlider.value; targetLabel.textContent=Number(targetSlider.value).toFixed(1)+"°";
+});
+targetInput.addEventListener("input",()=>{
+  const v=Math.max(limits[selected][0],Math.min(limits[selected][1],Number(targetInput.value)));
+  targetSlider.value=v; targetLabel.textContent=v.toFixed(1)+"°";
+});
+
+document.getElementById("moveBtn").onclick=()=>{
+  auto=false; targets[selected]=Number(targetInput.value); moving=true; setStatus("執行單軸定位", "#55d98d");
+};
+document.getElementById("autoBtn").onclick=()=>{
+  moving=false; auto=true; autoDir=1; setStatus(`J${selected+1} 自動往復`, "#55d98d");
+};
+document.getElementById("stopBtn").onclick=()=>{
+  moving=false; auto=false; targets.splice(0,6,...angles); setStatus("已停止", "#ff6b6b");
+};
+document.getElementById("homeBtn").onclick=()=>{
+  auto=false; moving=true; [0,-25,55,0,35,0].forEach((v,i)=>targets[i]=v); setStatus("返回原點", "#55d98d");
+};
+document.getElementById("randomBtn").onclick=()=>{
+  auto=false; moving=true;
+  limits.forEach((lim,i)=>targets[i]=THREE.MathUtils.lerp(lim[0]*.65,lim[1]*.65,Math.random()));
+  setStatus("移動至隨機姿態", "#55d98d");
+};
+
+function setStatus(text,color){
+  document.getElementById("runStatus").textContent=text;
+  document.getElementById("statusDot").style.background=color;
+}
+function refreshUI(){
+  angles.forEach((a,i)=>{
+    sliders[i].value=a;
+    document.getElementById(`jv${i}`).textContent=a.toFixed(1)+"°";
   });
-
-  document.querySelectorAll('input[name="direction"]').forEach(radio => {
-    radio.addEventListener('change', () => {
-      direction = Number(document.querySelector('input[name="direction"]:checked').value);
-      updateMotionUI();
-    });
-  });
-
-  document.querySelectorAll('input[name="motionMode"]').forEach(radio => {
-    radio.addEventListener('change', () => {
-      motionMode = document.querySelector('input[name="motionMode"]:checked').value;
-      if (motionMode === 'dual' && secondJoint === selectedJoint) refreshSecondJointOptions();
-      updateControlFromJoint();
-    });
-  });
-
-  $('secondJoint').addEventListener('change', (e) => {
-    secondJoint = Number(e.target.value);
-    updateControlFromJoint();
-  });
-
-  $('secondDirection').addEventListener('change', (e) => {
-    secondDirection = Number(e.target.value);
-    updateMotionUI();
-  });
-
-  $('secondSpeed').addEventListener('input', (e) => {
-    secondSpeed = Number(e.target.value);
-    $('secondSpeedValue').textContent = `${secondSpeed.toFixed(1)} °/s`;
-    updateMotionUI();
-  });
-
-  function startContinuousMotion() {
-    cancelProgramForManual('切換至手動連續運動');
-    const blocked = [];
-    if (atDirectionalLimit(selectedJoint, direction)) blocked.push(`J${selectedJoint+1}`);
-    if (motionMode === 'dual' && atDirectionalLimit(secondJoint, secondDirection)) blocked.push(`J${secondJoint+1}`);
-    if (blocked.length) {
-      isMoving = false;
-      setMotionStatus(`無法啟動：${blocked.join('、')} 已位於指定方向的模型軸限，請先反向。`, 'limit');
-      return;
-    }
-    isMoving = true;
-    const axes = motionMode === 'dual' ? `J${selectedJoint+1} + J${secondJoint+1}` : `J${selectedJoint+1}`;
-    setMotionStatus(`運動中：${axes}｜模型軸限與 20 mm 地板安全間隙保護已啟用。`, 'running');
+  if(!moving && !auto){
+    targetSlider.value=angles[selected]; targetInput.value=angles[selected];
+    targetLabel.textContent=angles[selected].toFixed(1)+"°";
   }
+}
 
-  function stopContinuousMotion(reason = '使用者停止') {
-    isMoving = false;
-    setMotionStatus(`狀態：停止｜${reason}。`);
-  }
+// GPU detection
+const gl=renderer.getContext();
+document.getElementById("webglVersion").textContent = renderer.capabilities.isWebGL2 ? "WebGL 2" : "WebGL 1";
+const dbg=gl.getExtension("WEBGL_debug_renderer_info");
+const vendor=dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR);
+const gpu=dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+document.getElementById("gpuVendor").textContent=vendor;
+document.getElementById("gpuRenderer").textContent=gpu;
+if(/nvidia/i.test(gpu+" "+vendor)) setStatus("NVIDIA GPU 已啟用", "#55d98d");
+else setStatus("WebGL GPU 已啟用", "#ffd166");
 
-  $('startMotion').addEventListener('click', startContinuousMotion);
-  $('stopMotion').addEventListener('click', () => stopContinuousMotion('使用者停止'));
-  $('resetAll').addEventListener('click', () => setPose([0,0,0,0,0,0]));
-  $('toggleTrail').addEventListener('click', () => {
-    trailEnabled = !trailEnabled;
-    $('toggleTrail').textContent = trailEnabled ? '關閉軌跡' : '開啟軌跡';
-    if (!trailEnabled) clearTrail();
-  });
-  document.querySelectorAll('.preset').forEach(btn => btn.addEventListener('click', () => setPose(presets[btn.dataset.preset])));
-
-  $('j6RangeMode').addEventListener('change', (e) => {
-    cancelProgramForManual('J6 模型行程設定變更');
-    isMoving = false;
-    const range = Number(e.target.value);
-    limits[5] = [-range, range];
-    q[5] = clampJoint(5, q[5]);
-    renderLimitGrid();
-    applyJointRotations();
-    updateControlFromJoint();
-    setMotionStatus(`J6 模型行程已設為 ${formatLimit(-range)} ～ ${formatLimit(range)}。`);
-    validateCurrentGcode(false);
-  });
-
-  $('programOverride').addEventListener('input', (e) => {
-    programOverride = Number(e.target.value) / 100;
-    $('programOverrideValue').textContent = `${Math.round(programOverride * 100)}%`;
-  });
-  $('gcodeValidate').addEventListener('click', () => {
-    if (program.state === 'running' || program.state === 'paused') stopGcodeProgram('重新檢查程式', false);
-    validateCurrentGcode(true);
-  });
-  $('gcodeExample').addEventListener('click', () => {
-    stopGcodeProgram('載入範例', true);
-    $('gcodeEditor').value = GCODE_EXAMPLE;
-    validateCurrentGcode(true);
-  });
-  $('gcodeStart').addEventListener('click', startOrResumeGcode);
-  $('gcodePause').addEventListener('click', () => pauseGcode('使用者暫停'));
-  $('gcodeStep').addEventListener('click', singleStepGcode);
-  $('gcodeStop').addEventListener('click', () => stopGcodeProgram('使用者停止', false));
-  $('gcodeEditor').addEventListener('input', () => {
-    if (program.state === 'running' || program.state === 'paused') stopGcodeProgram('程式內容已修改', false);
-    program.blocks = [];
-    program.source = '';
-    updateProgramProgress(0);
-    setGcodeStatus('程式內容已修改，請重新檢查。');
-  });
-
-  $('gpuRetry').addEventListener('click', initWebGPU);
-  $('gpuBenchmark').addEventListener('click', runGpuBenchmark);
-
-  window.addEventListener('keydown', (e) => {
-    const tag = e.target?.tagName?.toLowerCase();
-    const editing = tag === 'textarea' || tag === 'input' || tag === 'select' || e.target?.isContentEditable;
-    if (editing) return;
-    if (/^[1-6]$/.test(e.key)) setSelectedJoint(Number(e.key)-1);
-    if (e.code === 'Space') {
-      e.preventDefault();
-      if (program.state === 'running') pauseGcode('空白鍵暫停');
-      else if (program.state === 'paused') startOrResumeGcode();
-      else if (isMoving) stopContinuousMotion('空白鍵停止');
-      else startContinuousMotion();
-    }
-    if (e.key === 'ArrowLeft') setJointAngle(selectedJoint, q[selectedJoint]-1);
-    if (e.key === 'ArrowRight') setJointAngle(selectedJoint, q[selectedJoint]+1);
-  });
-
-  // ------------------------------
-  // 動畫與尺寸
-  // ------------------------------
-  const clock = new THREE.Clock();
-  let fpsFrames = 0;
-  let fpsTime = performance.now();
-
-  function resize() {
-    const w = viewport.clientWidth;
-    const h = viewport.clientHeight;
-    camera.aspect = Math.max(w,1) / Math.max(h,1);
-    camera.updateProjectionMatrix();
-    renderer.setSize(w, h, false);
-  }
-  window.addEventListener('resize', resize);
-  new ResizeObserver(resize).observe(viewport);
-  resize();
-
-  function animate() {
-    requestAnimationFrame(animate);
-    const dt = Math.min(clock.getDelta(), 0.05);
-
-    updateGcodeProgram(dt);
-
-    if (isMoving && program.state !== 'running') {
-      const activeMoves = [
-        { jointIndex: selectedJoint, speed: motionSpeed, dir: direction }
-      ];
-      if (motionMode === 'dual') {
-        activeMoves.push({ jointIndex: secondJoint, speed: secondSpeed, dir: secondDirection });
-      }
-
-      // Find the earliest limit crossing within this frame, then move every active axis
-      // by the same time fraction. This prevents one axis from taking a full step while
-      // the other axis is stopped at a limit.
-      let frameFraction = 1;
-      let limitHit = null;
-      for (const move of activeMoves) {
-        const { jointIndex, speed, dir } = move;
-        const [lo, hi] = limits[jointIndex];
-        const delta = dir * speed * dt;
-        if (delta > 0 && q[jointIndex] + delta >= hi) {
-          const fraction = Math.max(0, (hi - q[jointIndex]) / delta);
-          if (fraction <= frameFraction) {
-            frameFraction = fraction;
-            limitHit = { jointIndex, boundary: hi, direction: '正向' };
-          }
-        } else if (delta < 0 && q[jointIndex] + delta <= lo) {
-          const fraction = Math.max(0, (lo - q[jointIndex]) / delta);
-          if (fraction <= frameFraction) {
-            frameFraction = fraction;
-            limitHit = { jointIndex, boundary: lo, direction: '負向' };
-          }
+// Simple render-to-texture shader workload
+document.getElementById("gpuTestBtn").onclick=()=>{
+  const result=document.getElementById("gpuTestResult");
+  const size=1024;
+  const rt=new THREE.WebGLRenderTarget(size,size,{type:THREE.UnsignedByteType});
+  const s=new THREE.Scene();
+  const c=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+  const q=new THREE.Mesh(new THREE.PlaneGeometry(2,2),new THREE.ShaderMaterial({
+    vertexShader:`void main(){gl_Position=vec4(position,1.0);}`,
+    fragmentShader:`precision highp float;
+      void main(){
+        vec2 p=gl_FragCoord.xy/1024.0;
+        float v=0.0;
+        for(int i=0;i<120;i++){
+          v += sin(p.x*float(i+1))*cos(p.y*float(i+2));
         }
-      }
+        gl_FragColor=vec4(fract(v),fract(v*.37),fract(v*.73),1.0);
+      }`
+  }));
+  s.add(q);
+  const t0=performance.now();
+  for(let i=0;i<30;i++){renderer.setRenderTarget(rt);renderer.render(s,c);}
+  gl.finish();
+  const ms=performance.now()-t0;
+  renderer.setRenderTarget(null); rt.dispose(); q.geometry.dispose(); q.material.dispose();
+  result.innerHTML=`完成 30 次 1024×1024 Shader 運算：<b>${ms.toFixed(1)} ms</b><br>平均：<b>${(ms/30).toFixed(2)} ms/frame</b>`;
+};
 
-      const previous = q.slice();
-      const candidate = q.slice();
-      for (const move of activeMoves) {
-        candidate[move.jointIndex] += move.dir * move.speed * dt * frameFraction;
-        candidate[move.jointIndex] = clampJoint(move.jointIndex, candidate[move.jointIndex]);
-      }
+let last=performance.now(), fpsTime=last, frames=0;
+const worldPos=new THREE.Vector3();
 
-      const floorResult = movePoseWithFloorGuard(previous, candidate);
-      if (floorResult.blocked) {
-        isMoving = false;
-        setMotionStatus(`地板防撞停止：${floorResult.state.part} 將低於 20 mm 安全間隙；已停在碰撞前姿態。`, 'collision');
-      } else if (limitHit && frameFraction < 1) {
-        q[limitHit.jointIndex] = limitHit.boundary;
-        applyJointRotations();
-        isMoving = false;
-        setMotionStatus(`模型軸限停止：J${limitHit.jointIndex+1} 到達${limitHit.direction}限位 ${formatLimit(limitHit.boundary)}。`, 'limit');
-      }
+function animate(now){
+  requestAnimationFrame(animate);
+  const dt=Math.min((now-last)/1000,.05); last=now;
+  const speed=Math.max(1,Number(speedInput.value)||35);
 
-      updateControlFromJoint();
+  if(moving){
+    let done=true;
+    for(let i=0;i<6;i++){
+      const diff=targets[i]-angles[i];
+      if(Math.abs(diff)>.03){
+        angles[i]+=Math.sign(diff)*Math.min(Math.abs(diff),speed*dt);
+        done=false;
+      }else angles[i]=targets[i];
     }
-
-    scene.updateMatrixWorld(true);
-    appendTrailPoint();
-    updateTCPReadout();
-    controls.update();
-    renderer.render(scene, camera);
-
-    fpsFrames++;
-    const now = performance.now();
-    if (now - fpsTime >= 500) {
-      $('fps').textContent = Math.round(fpsFrames * 1000 / (now-fpsTime));
-      fpsFrames = 0;
-      fpsTime = now;
-    }
+    if(done){moving=false;setStatus("定位完成","#55d98d")}
+    applyAngles(); refreshUI();
   }
 
-  initWebGPU();
-  animate();
+  if(auto){
+    const [lo,hi]=limits[selected];
+    const rangeLo=Math.max(lo,-90), rangeHi=Math.min(hi,90);
+    angles[selected]+=autoDir*speed*dt;
+    if(angles[selected]>=rangeHi){angles[selected]=rangeHi;autoDir=-1}
+    if(angles[selected]<=rangeLo){angles[selected]=rangeLo;autoDir=1}
+    applyAngles(); refreshUI();
+  }
+
+  tcp.getWorldPosition(worldPos);
+  document.getElementById("tcpX").textContent=worldPos.x.toFixed(3)+" m";
+  document.getElementById("tcpY").textContent=worldPos.y.toFixed(3)+" m";
+  document.getElementById("tcpZ").textContent=worldPos.z.toFixed(3)+" m";
+
+  controls.update(); renderer.render(scene,camera);
+  frames++;
+  if(now-fpsTime>500){
+    document.getElementById("fps").textContent=(frames*1000/(now-fpsTime)).toFixed(1);
+    frames=0;fpsTime=now;
+  }
+}
+requestAnimationFrame(animate);
+
+addEventListener("resize",()=>{
+  camera.aspect=wrap.clientWidth/wrap.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(wrap.clientWidth,wrap.clientHeight);
+});
+syncSelectedLimits();
 </script>
 </body>
 </html>
